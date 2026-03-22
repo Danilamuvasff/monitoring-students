@@ -473,42 +473,58 @@
         container.innerHTML = html;
     }
 
-    async function openMarkNoteWindow() {
-        const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
-        if (!status || !STATUSES.includes(status)) {
-            alert("Неверный уровень!");
-            return;
-        }
-        
-        const eventsList = eventsData[status] || [];
-        if (eventsList.length === 0) {
-            alert("Нет мероприятий в этом уровне!");
-            return;
-        }
-        
-        let eventOptions = "";
-        for (let i = 0; i < eventsList.length; i++) {
-            eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
-        }
-        
-        const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
-        if (!eventNum) return;
-        
-        const idx = parseInt(eventNum) - 1;
-        if (idx < 0 || idx >= eventsList.length) {
-            alert("Неверный номер!");
-            return;
-        }
-        
-        const event = eventsList[idx];
-        const date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
-        if (!date) return;
-        
-        await updateServiceNoteOnServer(event.id, true, date);
-        eventsData = await loadEvents();
-        render();
-        alert(`Служебная записка отмечена! Дата: ${date}`);
+async function openMarkNoteWindow() {
+    const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
+    if (!status || !STATUSES.includes(status)) {
+        alert("Неверный уровень!");
+        return;
     }
+    
+    const eventsList = eventsData[status] || [];
+    if (eventsList.length === 0) {
+        alert("Нет мероприятий в этом уровне!");
+        return;
+    }
+    
+    let eventOptions = "";
+    for (let i = 0; i < eventsList.length; i++) {
+        eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
+    }
+    
+    const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
+    if (!eventNum) return;
+    
+    const idx = parseInt(eventNum) - 1;
+    if (idx < 0 || idx >= eventsList.length) {
+        alert("Неверный номер!");
+        return;
+    }
+    
+    const event = eventsList[idx];
+    let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+    if (!date) return;
+    
+    // ========== ВАЖНО: Проверяем и форматируем дату ==========
+    // Если пользователь ввёл дату в формате ДД.ММ.ГГГГ, оставляем как есть
+    // Если ввёл в другом формате, пытаемся преобразовать
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
+        try {
+            // Пробуем распарсить как ISO
+            let parsedDate = new Date(date);
+            if (!isNaN(parsedDate.getTime())) {
+                let day = parsedDate.getDate().toString().padStart(2, '0');
+                let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
+                let year = parsedDate.getFullYear();
+                date = `${day}.${month}.${year}`;
+            }
+        } catch(e) {}
+    }
+    
+    await updateServiceNoteOnServer(event.id, true, date);
+    eventsData = await loadEvents();
+    render();
+    alert(`Служебная записка отмечена! Дата: ${date}`);
+}
 
     function openMultiGenerateNoteWindow() {
         let allEvents = [];
