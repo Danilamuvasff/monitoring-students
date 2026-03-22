@@ -7,35 +7,23 @@
     <link rel="stylesheet" href="style.css">
     <!-- Favicon с графиком -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
-</head>
-<body>
-<div class="app-container" id="app">
-    <div class="loader">Загрузка...</div>
-</div>
-
-<script>
+    
+   
     // ==================== КОНСТАНТЫ ====================
     const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
     const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbyZqbjci5KDpNdNQ7z6AeGC6xBlBp6UP13GTOCMPlS6WJUhQ7H6e6EEfcjjnvJ4oHw/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxDRmKOMGk0KvCN7PUuceFxIZ6JMxLEaeiQm2yZK6fz69pgWgwlixiGwtNj1Ng-G-s/exec";
 
     // ==================== ФОРМАТИРОВАНИЕ ДАТЫ ====================
     function formatDate(dateString) {
         if (!dateString) return "";
-        
-        // Если дата уже в формате ДД.ММ.ГГГГ
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) {
-            return dateString;
-        }
-        
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
         try {
             let date = new Date(dateString);
-            if (isNaN(date.getTime())) {
-                return dateString;
-            }
+            if (isNaN(date.getTime())) return dateString;
             let day = date.getDate().toString().padStart(2, '0');
             let month = (date.getMonth() + 1).toString().padStart(2, '0');
             let year = date.getFullYear();
@@ -52,18 +40,15 @@
     let selectedEventId = null;
     let pendingParticipants = [];
 
-    // ==================== API ФУНКЦИИ (GET запросы) ====================
+    // ==================== API ФУНКЦИИ ====================
     async function apiCall(action, data = {}) {
         try {
             const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
             const response = await fetch(url);
             const result = await response.json();
-            if (result.success) {
-                return result.data;
-            } else {
-                console.error('API Error:', result.error);
-                return null;
-            }
+            if (result.success) return result.data;
+            console.error('API Error:', result.error);
+            return null;
         } catch (err) {
             console.error('Network Error:', err);
             return null;
@@ -103,12 +88,12 @@
         return await apiCall("saveUser", userData);
     }
 
-    async function updateUserOnServer(userData) {
-        return await apiCall("updateUser", userData);
-    }
-
     async function deleteUserOnServer(login) {
         return await apiCall("deleteUser", { login });
+    }
+
+    async function clearAllDataOnServer(password) {
+        return await apiCall("clearAllData", { password });
     }
 
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -367,6 +352,30 @@
             render();
         });
 
+        // КНОПКА ОЧИСТКИ ВСЕХ ДАННЫХ (работает!)
+        document.getElementById('clearAllBtn')?.addEventListener('click', async () => {
+            if (!confirm('⚠️ ВНИМАНИЕ! Вы действительно хотите удалить ВСЕ мероприятия и участников?\n\nЭто действие НЕОБРАТИМО!')) {
+                return;
+            }
+            
+            const password = prompt('Введите пароль администратора для подтверждения:');
+            if (!password) return;
+            
+            const users = await loadUsers();
+            if (users['muhanov'] && users['muhanov'].password === password) {
+                const result = await apiCall("clearAllData");
+                if (result) {
+                    eventsData = await loadEvents();
+                    render();
+                    alert('✅ Все данные успешно удалены!');
+                } else {
+                    alert('❌ Ошибка при удалении данных!');
+                }
+            } else {
+                alert('❌ Неверный пароль администратора!');
+            }
+        });
+
         if (currentUser?.role === 'editor') {
             document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
             document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
@@ -504,9 +513,7 @@
         }
         allEvents = sortEventsByDate(allEvents);
         
-        let selectedEvents = [];
         let eventList = "";
-        
         for (let i = 0; i < allEvents.length; i++) {
             eventList += `${i+1}. ${allEvents[i].name} (${allEvents[i].status}, ${formatDate(allEvents[i].date)})\n`;
         }
@@ -515,7 +522,7 @@
         if (!input) return;
         
         const numbers = input.split(",").map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n > 0 && n <= allEvents.length);
-        selectedEvents = numbers.map(n => allEvents[n-1]);
+        const selectedEvents = numbers.map(n => allEvents[n-1]);
         
         if (selectedEvents.length === 0) {
             alert("Не выбрано ни одного мероприятия!");
