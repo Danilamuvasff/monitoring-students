@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
+    
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
     
 </head>
@@ -18,8 +19,10 @@
     const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-    const API_URL = "https://script.google.com/macros/s/AKfycbyZqbjci5KDpNdNQ7z6AeGC6xBlBp6UP13GTOCMPlS6WJUhQ7H6e6EEfcjjnvJ4oHw/exec";
+    // ========== ВСТАВЬТЕ ВАШ НОВЫЙ URL ==========
+    const API_URL = "https://script.google.com/macros/s/AKfycbxvJFMz0IxlFNMNrrQOyb-Ny0BVgbWjuon0ieLRvJK9DxUmbdEYiqf-lkMaj94nyaM/exec";
 
+    // Форматирование даты в ДД.ММ.ГГГГ
     function formatDate(dateString) {
         if (!dateString) return "";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
@@ -33,6 +36,22 @@
         } catch(e) {
             return dateString;
         }
+    }
+
+    // Преобразование даты перед отправкой
+    function toRussianDate(dateInput) {
+        if (!dateInput) return "";
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateInput)) return dateInput;
+        try {
+            let d = new Date(dateInput);
+            if (!isNaN(d.getTime())) {
+                let day = d.getDate().toString().padStart(2, '0');
+                let month = (d.getMonth() + 1).toString().padStart(2, '0');
+                let year = d.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+        } catch(e) {}
+        return dateInput;
     }
 
     let currentUser = null;
@@ -76,9 +95,15 @@
     }
 
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
-    async function updateServiceNoteOnServer(eventId, written, date) { return await apiCall("updateServiceNote", { eventId, written, date }); }
+    
+    async function updateServiceNoteOnServer(eventId, written, date) { 
+        const formattedDate = toRussianDate(date);
+        return await apiCall("updateServiceNote", { eventId, written, date: formattedDate }); 
+    }
+    
     async function saveUserToServer(userData) { return await apiCall("saveUser", userData); }
     async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
+    async function clearAllDataOnServer() { return await apiCall("clearAllData"); }
 
     function sortEventsByDate(events) {
         return [...events].sort((a, b) => {
@@ -138,6 +163,10 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
                     </div>
                 </div>
             </div>
@@ -192,7 +221,7 @@
                 }
             }
             const noteStatus = ev.service_note_written 
-                ? `<span class="service-note-written">✅ НАПИСАНА (${ev.service_note_date})</span>`
+                ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(ev.service_note_date)})</span>`
                 : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
 
             eventsHtml += `
@@ -339,7 +368,7 @@
             if (!password) return;
             const users = await loadUsers();
             if (users['muhanov'] && users['muhanov'].password === password) {
-                const result = await apiCall("clearAllData");
+                const result = await clearAllDataOnServer();
                 if (result) {
                     eventsData = await loadEvents();
                     render();
@@ -422,7 +451,6 @@
         container.innerHTML = html;
     }
 
-    // ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ ==========
     async function openMarkNoteWindow() {
         const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
         if (!status || !STATUSES.includes(status)) {
@@ -454,7 +482,7 @@
         let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
         if (!date) return;
         
-        // Проверяем и форматируем дату, если пользователь ввёл в другом формате
+        // Проверяем и форматируем дату
         if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
             try {
                 let parsedDate = new Date(date);
@@ -572,7 +600,7 @@ ${'═'.repeat(70)}
             text += `Число участников: ${ev.participants_count}\n`;
             text += `Дата проведения: ${formatDate(ev.date)}\n`;
             text += `Результат: ${ev.participants[0]?.result || ''}\n`;
-            text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${ev.service_note_date})` : 'НЕ НАПИСАНА'}\n`;
+            text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${formatDate(ev.service_note_date)})` : 'НЕ НАПИСАНА'}\n`;
             text += `Участники, группа:\n`;
             const groups = groupParticipantsBySupervisor(ev.participants);
             for (const [sup, parts] of Object.entries(groups)) {
