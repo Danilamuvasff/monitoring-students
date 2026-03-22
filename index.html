@@ -1,166 +1,134 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-    <div class="app-container" id="app">
-        <div class="loader">Загрузка...</div>
-    </div>
+<div class="app-container" id="app">
+    <div class="loader">Загрузка...</div>
+</div>
 
-    <script>
-        // ==================== КОНСТАНТЫ ====================
-        const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
-        const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
-        const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
+<script>
+    // ==================== КОНСТАНТЫ ====================
+    const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
+    const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
+    const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-        // ========== GOOGLE SHEETS API URL - ЗАМЕНИТЕ НА ВАШ! ==========
-        const API_URL = "https://script.google.com/macros/s/AKfycbyOtSvCyEgBkcrRV85cM55oVd3NGahlz2Pjmct58MnpbmvsRNSV60pm3Ywi0PY_zB8/exec"; // <-- ВСТАВЬТЕ СЮДА ВАШ URL
+    // ========== ВСТАВЬТЕ ВАШ URL ==========
+    const API_URL = "https://script.google.com/macros/s/AKfycbyZqbjci5KDpNdNQ7z6AeGC6xBlBp6UP13GTOCMPlS6WJUhQ7H6e6EEfcjjnvJ4oHw/exec";
 
-        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
-        let currentUser = null;
-        let currentStatus = STATUSES[0];
-        let eventsData = {};
-        let selectedEventId = null;
-        let pendingParticipants = [];
+    // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
+    let currentUser = null;
+    let currentStatus = STATUSES[0];
+    let eventsData = {};
+    let selectedEventId = null;
+    let pendingParticipants = [];
 
-        // ==================== API ФУНКЦИИ ====================
-        async function apiCall(action, data = {}) {
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `action=${action}&data=${JSON.stringify(data)}`
-                });
-                const result = await response.json();
-                if (result.success) {
-                    return result.data;
-                } else {
-                    console.error('API Error:', result.error);
-                    return null;
-                }
-            } catch (err) {
-                console.error('Network Error:', err);
-                return null;
-            }
-        }
-
-        const PROXY_URL = "https://cors-anywhere.herokuapp.com/";
-
-        // Функция для запросов с прокси
-        async function apiCallWithProxy(action, data = {}) {
-            const url = PROXY_URL + API_URL;
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `action=${action}&data=${JSON.stringify(data)}`
-                });
-                const result = await response.json();
-                if (result.success) {
-                    return result.data;
-                }
-                return null;
-            } catch (err) {
-                console.error('Network Error:', err);
-                return null;
-            }
-        }
-
-
-        // ==================== ЗАГРУЗКА ДАННЫХ ====================
-        async function loadUsersFromServer() {
-            const users = await apiCall("getUsers");
-            if (users) {
-                localStorage.setItem("monitoring_users_cache", JSON.stringify(users));
-                return users;
-            }
-            const cached = localStorage.getItem("monitoring_users_cache");
-            return cached ? JSON.parse(cached) : {};
-        }
-
-        async function loadEventsFromServer() {
-            const events = await apiCall("getEvents");
-            if (events) {
-                localStorage.setItem("monitoring_events_cache", JSON.stringify(events));
-                return events;
-            }
-            const cached = localStorage.getItem("monitoring_events_cache");
-            return cached ? JSON.parse(cached) : {};
-        }
-
-        async function saveEventToServer(eventData) {
-            return await apiCall("saveEvent", eventData);
-        }
-
-        async function updateServiceNoteOnServer(eventId, written, date) {
-            return await apiCall("updateServiceNote", { eventId, written, date });
-        }
-
-        async function saveUserToServer(userData) {
-            return await apiCall("saveUser", userData);
-        }
-
-        async function updateUserOnServer(userData) {
-            return await apiCall("updateUser", userData);
-        }
-
-        async function deleteUserOnServer(login) {
-            return await apiCall("deleteUser", { login });
-        }
-
-        // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-        function sortEventsByDate(events) {
-            return [...events].sort((a, b) => {
-                const dateA = a.date.split('.').reverse().join('-');
-                const dateB = b.date.split('.').reverse().join('-');
-                return dateA.localeCompare(dateB);
-            });
-        }
-
-        function groupParticipantsBySupervisor(participants) {
-            const groups = {};
-            for (const p of participants) {
-                const sup = p.supervisor || "—";
-                if (!groups[sup]) groups[sup] = [];
-                groups[sup].push(p);
-            }
-            return groups;
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function (m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
-
-        // ==================== ОТРИСОВКА ====================
-        function render() {
-            const app = document.getElementById('app');
-            if (!currentUser) {
-                app.innerHTML = renderLogin();
-                attachLoginEvents();
+    // ==================== API ФУНКЦИИ (GET запросы) ====================
+    async function apiCall(action, data = {}) {
+        try {
+            const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
+            const response = await fetch(url);
+            const result = await response.json();
+            if (result.success) {
+                return result.data;
             } else {
-                app.innerHTML = renderMain();
-                attachMainEvents();
+                console.error('API Error:', result.error);
+                return null;
             }
+        } catch (err) {
+            console.error('Network Error:', err);
+            return null;
         }
+    }
 
-        function renderLogin() {
-            return `
+    // ==================== ЗАГРУЗКА ДАННЫХ ====================
+    async function loadUsers() {
+        const users = await apiCall("getUsers");
+        if (users) {
+            localStorage.setItem("monitoring_users_cache", JSON.stringify(users));
+            return users;
+        }
+        const cached = localStorage.getItem("monitoring_users_cache");
+        return cached ? JSON.parse(cached) : {};
+    }
+
+    async function loadEvents() {
+        const events = await apiCall("getEvents");
+        if (events) {
+            localStorage.setItem("monitoring_events_cache", JSON.stringify(events));
+            return events;
+        }
+        const cached = localStorage.getItem("monitoring_events_cache");
+        return cached ? JSON.parse(cached) : {};
+    }
+
+    async function saveEventToServer(eventData) {
+        return await apiCall("saveEvent", eventData);
+    }
+
+    async function updateServiceNoteOnServer(eventId, written, date) {
+        return await apiCall("updateServiceNote", { eventId, written, date });
+    }
+
+    async function saveUserToServer(userData) {
+        return await apiCall("saveUser", userData);
+    }
+
+    async function updateUserOnServer(userData) {
+        return await apiCall("updateUser", userData);
+    }
+
+    async function deleteUserOnServer(login) {
+        return await apiCall("deleteUser", { login });
+    }
+
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+    function sortEventsByDate(events) {
+        return [...events].sort((a, b) => {
+            const dateA = a.date.split('.').reverse().join('-');
+            const dateB = b.date.split('.').reverse().join('-');
+            return dateA.localeCompare(dateB);
+        });
+    }
+
+    function groupParticipantsBySupervisor(participants) {
+        const groups = {};
+        for (const p of participants) {
+            const sup = p.supervisor || "—";
+            if (!groups[sup]) groups[sup] = [];
+            groups[sup].push(p);
+        }
+        return groups;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // ==================== ОТРИСОВКА ====================
+    function render() {
+        const app = document.getElementById('app');
+        if (!currentUser) {
+            app.innerHTML = renderLogin();
+            attachLoginEvents();
+        } else {
+            app.innerHTML = renderMain();
+            attachMainEvents();
+        }
+    }
+
+    function renderLogin() {
+        return `
             <div class="main-content" style="max-width: 450px; margin: 5rem auto;">
                 <div class="panel" style="text-align: center;">
                     <div style="margin-bottom: 1.5rem;">
@@ -178,35 +146,39 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
                     </div>
                 </div>
             </div>
         `;
+    }
+
+    function renderMain() {
+        const role = currentUser.role;
+        const isAdmin = role === 'admin';
+        const isEditor = role === 'editor';
+        
+        const eventsForStatus = eventsData[currentStatus] || [];
+        const sortedEvents = sortEventsByDate(eventsForStatus);
+
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParticipants = 0;
+        let notesWritten = 0;
+        let notesNotWritten = 0;
+
+        for (const ev of sortedEvents) {
+            for (const p of ev.participants) {
+                totalStats[p.result] = (totalStats[p.result] || 0) + 1;
+                totalParticipants++;
+            }
+            if (ev.service_note_written) notesWritten++;
+            else notesNotWritten++;
         }
 
-        function renderMain() {
-            const role = currentUser.role;
-            const isAdmin = role === 'admin';
-            const isEditor = role === 'editor';
-
-            const eventsForStatus = eventsData[currentStatus] || [];
-            const sortedEvents = sortEventsByDate(eventsForStatus);
-
-            let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-            let totalParticipants = 0;
-            let notesWritten = 0;
-            let notesNotWritten = 0;
-
-            for (const ev of sortedEvents) {
-                for (const p of ev.participants) {
-                    totalStats[p.result] = (totalStats[p.result] || 0) + 1;
-                    totalParticipants++;
-                }
-                if (ev.service_note_written) notesWritten++;
-                else notesNotWritten++;
-            }
-
-            const statsHtml = `
+        const statsHtml = `
             <div class="stats">
                 <div class="stats-grid">
                     <span>📊 Участие: ${totalStats["Участие"]}</span>
@@ -220,24 +192,24 @@
             </div>
         `;
 
-            let eventsHtml = '';
-            for (let idx = 0; idx < sortedEvents.length; idx++) {
-                const ev = sortedEvents[idx];
-                const groups = groupParticipantsBySupervisor(ev.participants);
-                let participantsHtml = '';
-                for (const [sup, parts] of Object.entries(groups)) {
-                    participantsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
-                    for (const p of parts) {
-                        participantsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
-                    }
+        let eventsHtml = '';
+        for (let idx = 0; idx < sortedEvents.length; idx++) {
+            const ev = sortedEvents[idx];
+            const groups = groupParticipantsBySupervisor(ev.participants);
+            let participantsHtml = '';
+            for (const [sup, parts] of Object.entries(groups)) {
+                participantsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
+                for (const p of parts) {
+                    participantsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
                 }
-                const noteStatus = ev.service_note_written
-                    ? `<span class="service-note-written">✅ НАПИСАНА (${ev.service_note_date})</span>`
-                    : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
+            }
+            const noteStatus = ev.service_note_written 
+                ? `<span class="service-note-written">✅ НАПИСАНА (${ev.service_note_date})</span>`
+                : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
 
-                eventsHtml += `
+            eventsHtml += `
                 <div class="event-card" data-id="${ev.id}" data-status="${ev.status}">
-                    <div class="event-number">№ ${idx + 1}</div>
+                    <div class="event-number">№ ${idx+1}</div>
                     <div class="event-field"><span class="event-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
                     <div class="event-field"><span class="event-label">Статус:</span> ${ev.status}</div>
                     <div class="event-field"><span class="event-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
@@ -249,11 +221,11 @@
                     <div class="participant-list">${participantsHtml}</div>
                 </div>
             `;
-            }
+        }
 
-            let adminFormHtml = '';
-            if (isAdmin) {
-                adminFormHtml = `
+        let adminFormHtml = '';
+        if (isAdmin) {
+            adminFormHtml = `
                 <div class="panel">
                     <div class="panel-title">➕ Добавление мероприятия</div>
                     <div class="form-grid">
@@ -281,17 +253,17 @@
                     <button id="manageUsersBtn" class="btn-secondary">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</button>
                 </div>
             `;
-            }
+        }
 
-            let editorButtons = '';
-            if (isEditor) {
-                editorButtons = `
+        let editorButtons = '';
+        if (isEditor) {
+            editorButtons = `
                 <button id="markServiceNoteBtn" style="background: #28a745;">✍️ Отметить служебную записку</button>
                 <button id="generateServiceNoteBtn" style="background: #17a2b8;">📄 Сформировать служебную записку</button>
             `;
-            }
+        }
 
-            return `
+        return `
             <div class="header">
                 <div class="header-content">
                     <div class="logo">
@@ -326,358 +298,250 @@
                 ${adminFormHtml}
             </div>
         `;
-        }
+    }
 
-        // ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
-        function attachLoginEvents() {
-            document.getElementById('loginBtn')?.addEventListener('click', async () => {
-                const login = document.getElementById('login').value.trim();
-                const password = document.getElementById('password').value.trim();
-                const users = await loadUsersFromServer();
-                if (users[login] && users[login].password === password) {
-                    currentUser = { ...users[login], username: login };
-                    eventsData = await loadEventsFromServer();
-                    render();
-                } else {
-                    alert('Неверный логин или пароль!');
-                }
-            });
-        }
+    // ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
+    function attachLoginEvents() {
+        document.getElementById('loginBtn')?.addEventListener('click', async () => {
+            const login = document.getElementById('login').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const users = await loadUsers();
+            if (users[login] && users[login].password === password) {
+                currentUser = { ...users[login], username: login };
+                eventsData = await loadEvents();
+                render();
+            } else {
+                alert('Неверный логин или пароль!');
+            }
+        });
+    }
 
-        function attachMainEvents() {
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    currentStatus = btn.dataset.status;
-                    selectedEventId = null;
-                    render();
-                });
-            });
-
-            document.querySelectorAll('.event-card').forEach(card => {
-                card.addEventListener('click', (e) => {
-                    const id = parseInt(card.dataset.id);
-                    selectedEventId = id;
-                    render();
-                });
-            });
-
-            document.getElementById('logoutBtn')?.addEventListener('click', () => {
-                currentUser = null;
+    function attachMainEvents() {
+        document.querySelectorAll('.status-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                currentStatus = btn.dataset.status;
                 selectedEventId = null;
                 render();
             });
+        });
 
-            document.getElementById('copyAllBtn')?.addEventListener('click', () => copyAllText());
-            document.getElementById('copyStatsBtn')?.addEventListener('click', () => copyStats());
-            document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-                eventsData = await loadEventsFromServer();
+        document.querySelectorAll('.event-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                const id = parseInt(card.dataset.id);
+                selectedEventId = id;
                 render();
             });
+        });
 
-            if (currentUser?.role === 'editor') {
-                document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
-                document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
-            }
+        document.getElementById('logoutBtn')?.addEventListener('click', () => {
+            currentUser = null;
+            selectedEventId = null;
+            render();
+        });
 
-            if (currentUser?.role === 'admin') {
-                document.getElementById('addParticipantBtn')?.addEventListener('click', () => {
-                    const name = document.getElementById('participantName').value.trim();
-                    const group = document.getElementById('participantGroup').value.trim();
-                    let supervisor = document.getElementById('participantSupervisor').value.trim();
-                    const result = document.getElementById('participantResult').value;
-                    if (!name || !group) {
-                        alert('Заполните ФИО и группу!');
-                        return;
-                    }
-                    if (!supervisor) supervisor = '—';
-                    pendingParticipants.push({ full_name: name, group, supervisor, result });
-                    updateParticipantsList();
-                    document.getElementById('participantName').value = '';
-                    document.getElementById('participantGroup').value = '';
-                    document.getElementById('participantSupervisor').value = '';
-                });
+        document.getElementById('copyAllBtn')?.addEventListener('click', () => copyAllText());
+        document.getElementById('copyStatsBtn')?.addEventListener('click', () => copyStats());
+        document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+            eventsData = await loadEvents();
+            render();
+        });
 
-                document.getElementById('clearParticipantsBtn')?.addEventListener('click', () => {
-                    pendingParticipants = [];
-                    updateParticipantsList();
-                });
-
-                document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
-                    const name = document.getElementById('eventName').value.trim();
-                    const status = document.getElementById('eventStatus').value;
-                    const organizers = document.getElementById('eventOrganizers').value.trim() || 'Не указаны';
-                    const date = document.getElementById('eventDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                    if (!name) {
-                        alert('Введите название мероприятия!');
-                        return;
-                    }
-                    if (pendingParticipants.length === 0) {
-                        alert('Добавьте хотя бы одного участника!');
-                        return;
-                    }
-                    const result = await saveEventToServer({
-                        name,
-                        status,
-                        organizers,
-                        date,
-                        participants: pendingParticipants
-                    });
-                    if (result) {
-                        pendingParticipants = [];
-                        document.getElementById('eventName').value = '';
-                        document.getElementById('eventOrganizers').value = '';
-                        document.getElementById('eventDate').value = '';
-                        updateParticipantsList();
-                        eventsData = await loadEventsFromServer();
-                        render();
-                        alert('Мероприятие сохранено!');
-                    } else {
-                        alert('Ошибка сохранения!');
-                    }
-                });
-
-                document.getElementById('manageUsersBtn')?.addEventListener('click', () => openUserManagement());
-                document.getElementById('clearAllBtn')?.addEventListener('click', async () => {
-                    if (confirm('Удалить ВСЕ данные? Это действие необратимо!')) {
-                        // Очистка данных на сервере - требуется дополнительная реализация
-                        alert('Функция в разработке');
-                    }
-                });
-            }
+        if (currentUser?.role === 'editor') {
+            document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
+            document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
         }
 
-        function updateParticipantsList() {
-            const container = document.getElementById('participantsList');
-            if (!container) return;
-            if (pendingParticipants.length === 0) {
-                container.innerHTML = '<div style="color: gray;">Список пуст</div>';
-                return;
-            }
-            let html = '';
-            const groups = {};
-            for (const p of pendingParticipants) {
-                const sup = p.supervisor;
-                if (!groups[sup]) groups[sup] = [];
-                groups[sup].push(p);
-            }
-            for (const [sup, parts] of Object.entries(groups)) {
-                html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
-                for (let i = 0; i < parts.length; i++) {
-                    html += `<div style="margin-left: 1rem;">${i + 1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
+        if (currentUser?.role === 'admin') {
+            document.getElementById('addParticipantBtn')?.addEventListener('click', () => {
+                const name = document.getElementById('participantName').value.trim();
+                const group = document.getElementById('participantGroup').value.trim();
+                let supervisor = document.getElementById('participantSupervisor').value.trim();
+                const result = document.getElementById('participantResult').value;
+                if (!name || !group) {
+                    alert('Заполните ФИО и группу!');
+                    return;
                 }
-                html += '<div style="margin-bottom: 0.5rem;"></div>';
-            }
-            container.innerHTML = html;
-        }
+                if (!supervisor) supervisor = '—';
+                pendingParticipants.push({ full_name: name, group, supervisor, result });
+                updateParticipantsList();
+                document.getElementById('participantName').value = '';
+                document.getElementById('participantGroup').value = '';
+                document.getElementById('participantSupervisor').value = '';
+            });
 
-        async function openMarkNoteWindow() {
-            let modalHtml = `
-            <div class="modal" id="markNoteModal" style="display: flex;">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>✍️ Отметить служебную записку</h3>
-                        <span class="close-modal" onclick="document.getElementById('markNoteModal')?.remove()">&times;</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Выберите уровень мероприятия</label>
-                        <select id="markStatusSelect">
-                            ${STATUSES.map(s => `<option value="${s}" ${currentStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Выберите мероприятие</label>
-                        <select id="markEventSelect"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата написания (ДД.ММ.ГГГГ)</label>
-                        <input type="text" id="markDate" value="${new Date().toLocaleDateString('ru-RU')}">
-                    </div>
-                    <button id="confirmMarkBtn" style="margin-top: 1rem;">✅ ОТМЕТИТЬ КАК НАПИСАННУЮ</button>
-                </div>
-            </div>
-        `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            document.getElementById('clearParticipantsBtn')?.addEventListener('click', () => {
+                pendingParticipants = [];
+                updateParticipantsList();
+            });
 
-            const statusSelect = document.getElementById('markStatusSelect');
-            const eventSelect = document.getElementById('markEventSelect');
-
-            function updateEventList() {
-                const status = statusSelect.value;
-                const events = eventsData[status] || [];
-                eventSelect.innerHTML = events.map(e => `<option value="${e.id}">${e.id}. ${e.name} (${e.date})</option>`).join('');
-            }
-
-            statusSelect.addEventListener('change', updateEventList);
-            updateEventList();
-
-            document.getElementById('confirmMarkBtn')?.addEventListener('click', async () => {
-                const status = statusSelect.value;
-                const eventId = parseInt(eventSelect.value);
-                const date = document.getElementById('markDate').value.trim();
-                if (!eventId) { alert('Выберите мероприятие!'); return; }
-                if (!date) { alert('Введите дату!'); return; }
-                const result = await updateServiceNoteOnServer(eventId, true, date);
+            document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
+                const name = document.getElementById('eventName').value.trim();
+                const status = document.getElementById('eventStatus').value;
+                const organizers = document.getElementById('eventOrganizers').value.trim() || 'Не указаны';
+                const date = document.getElementById('eventDate').value.trim() || new Date().toLocaleDateString('ru-RU');
+                if (!name) {
+                    alert('Введите название мероприятия!');
+                    return;
+                }
+                if (pendingParticipants.length === 0) {
+                    alert('Добавьте хотя бы одного участника!');
+                    return;
+                }
+                const result = await saveEventToServer({
+                    name,
+                    status,
+                    organizers,
+                    date,
+                    participants: pendingParticipants
+                });
                 if (result) {
-                    eventsData = await loadEventsFromServer();
-                    document.getElementById('markNoteModal')?.remove();
+                    pendingParticipants = [];
+                    document.getElementById('eventName').value = '';
+                    document.getElementById('eventOrganizers').value = '';
+                    document.getElementById('eventDate').value = '';
+                    updateParticipantsList();
+                    eventsData = await loadEvents();
                     render();
-                    alert(`Служебная записка отмечена! Дата: ${date}`);
+                    alert('Мероприятие сохранено!');
                 } else {
-                    alert('Ошибка при отметке!');
+                    alert('Ошибка сохранения!');
                 }
             });
+
+            document.getElementById('manageUsersBtn')?.addEventListener('click', () => openUserManagement());
         }
+    }
 
-        function openMultiGenerateNoteWindow() {
-            let allEvents = [];
-            for (const status of STATUSES) {
-                const events = eventsData[status] || [];
-                for (const e of events) {
-                    allEvents.push({ ...e, status });
-                }
+    function updateParticipantsList() {
+        const container = document.getElementById('participantsList');
+        if (!container) return;
+        if (pendingParticipants.length === 0) {
+            container.innerHTML = '<div style="color: gray;">Список пуст</div>';
+            return;
+        }
+        let html = '';
+        const groups = {};
+        for (const p of pendingParticipants) {
+            const sup = p.supervisor;
+            if (!groups[sup]) groups[sup] = [];
+            groups[sup].push(p);
+        }
+        for (const [sup, parts] of Object.entries(groups)) {
+            html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
+            for (let i=0; i<parts.length; i++) {
+                html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
             }
-            allEvents = sortEventsByDate(allEvents);
+            html += '<div style="margin-bottom: 0.5rem;"></div>';
+        }
+        container.innerHTML = html;
+    }
 
-            let selectedEvents = [];
+    async function openMarkNoteWindow() {
+        const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
+        if (!status || !STATUSES.includes(status)) {
+            alert("Неверный уровень!");
+            return;
+        }
+        
+        const eventsList = eventsData[status] || [];
+        if (eventsList.length === 0) {
+            alert("Нет мероприятий в этом уровне!");
+            return;
+        }
+        
+        let eventOptions = "";
+        for (let i = 0; i < eventsList.length; i++) {
+            eventOptions += `${i+1}. ${eventsList[i].name} (${eventsList[i].date})\n`;
+        }
+        
+        const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
+        if (!eventNum) return;
+        
+        const idx = parseInt(eventNum) - 1;
+        if (idx < 0 || idx >= eventsList.length) {
+            alert("Неверный номер!");
+            return;
+        }
+        
+        const event = eventsList[idx];
+        const date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+        if (!date) return;
+        
+        await updateServiceNoteOnServer(event.id, true, date);
+        eventsData = await loadEvents();
+        render();
+        alert(`Служебная записка отмечена! Дата: ${date}`);
+    }
 
-            function updateSelectedList() {
-                const container = document.getElementById('selectedEventsContainer');
-                if (!container) return;
-                if (selectedEvents.length === 0) {
-                    container.innerHTML = '<div style="color: gray; text-align: center;">Нет выбранных мероприятий</div>';
-                } else {
-                    let html = '';
-                    for (let i = 0; i < selectedEvents.length; i++) {
-                        const ev = selectedEvents[i];
-                        html += `
-                        <div class="selected-event-item">
-                            <span>${ev.id}. ${ev.name} (${ev.status}, ${ev.date})</span>
-                            <button class="remove-event-btn" data-index="${i}">✖</button>
-                        </div>
-                    `;
-                    }
-                    container.innerHTML = html;
-                    document.querySelectorAll('.remove-event-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const index = parseInt(btn.dataset.index);
-                            selectedEvents.splice(index, 1);
-                            updateSelectedList();
-                            updateCheckboxes();
-                        });
-                    });
-                }
+    function openMultiGenerateNoteWindow() {
+        let allEvents = [];
+        for (const status of STATUSES) {
+            const events = eventsData[status] || [];
+            for (const e of events) {
+                allEvents.push({ ...e, status });
             }
-
-            function updateCheckboxes() {
-                const selectedIds = selectedEvents.map(e => e.id);
-                document.querySelectorAll('.event-checkbox-input').forEach(cb => {
-                    const id = parseInt(cb.dataset.id);
-                    cb.checked = selectedIds.includes(id);
+        }
+        allEvents = sortEventsByDate(allEvents);
+        
+        let selectedEvents = [];
+        let eventList = "";
+        
+        for (let i = 0; i < allEvents.length; i++) {
+            eventList += `${i+1}. ${allEvents[i].name} (${allEvents[i].status}, ${allEvents[i].date})\n`;
+        }
+        
+        const input = prompt(`Выберите номера мероприятий через запятую:\n\n${eventList}\n\nПример: 1,3,5`);
+        if (!input) return;
+        
+        const numbers = input.split(",").map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n > 0 && n <= allEvents.length);
+        selectedEvents = numbers.map(n => allEvents[n-1]);
+        
+        if (selectedEvents.length === 0) {
+            alert("Не выбрано ни одного мероприятия!");
+            return;
+        }
+        
+        const noteNumber = prompt("№ служебной записки:", "01-03/2026") || "___";
+        const today = new Date().toLocaleDateString('ru-RU');
+        
+        let allPrizeParticipants = [];
+        
+        for (const ev of selectedEvents) {
+            const fullEvent = eventsData[ev.status]?.find(e => e.id === ev.id);
+            if (!fullEvent) continue;
+            
+            const prizeParticipants = fullEvent.participants.filter(p => PRIZE_RESULTS.includes(p.result));
+            if (prizeParticipants.length > 0) {
+                allPrizeParticipants.push({
+                    event: fullEvent,
+                    participants: prizeParticipants
                 });
             }
-
-            let modalHtml = `
-            <div class="modal" id="generateNoteModal" style="display: flex;">
-                <div class="modal-content" style="max-width: 950px;">
-                    <div class="modal-header">
-                        <h3>📄 Формирование служебной записки (выбор нескольких мероприятий)</h3>
-                        <span class="close-modal" onclick="document.getElementById('generateNoteModal')?.remove()">&times;</span>
-                    </div>
-                    <div class="form-group">
-                        <label>№ служебной записки</label>
-                        <input type="text" id="noteNumber" placeholder="Например: 01-03/2026">
-                    </div>
-                    <div class="form-group">
-                        <label>Выберите мероприятия (можно выбрать несколько из разных уровней)</label>
-                        <div class="events-selector" id="eventsSelector">
-                            ${allEvents.map(e => `
-                                <div class="event-checkbox">
-                                    <input type="checkbox" class="event-checkbox-input" data-id="${e.id}" data-status="${e.status}" data-name="${escapeHtml(e.name)}" data-date="${e.date}">
-                                    <span>${e.id}. ${escapeHtml(e.name)} (${e.status}, ${e.date})</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Выбранные мероприятия:</label>
-                        <div id="selectedEventsContainer" class="selected-events-list"></div>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <button id="addSelectedBtn">➕ Добавить выбранные</button>
-                        <button id="clearSelectedBtn" class="btn-secondary">🗑 Очистить все</button>
-                    </div>
-                    <div id="notePreview" class="service-note-preview" style="display: none;"></div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <button id="generatePreviewBtn">🔍 Сформировать текст</button>
-                        <button id="copyNoteBtn" style="background: var(--success);">📋 Копировать в буфер</button>
-                    </div>
-                </div>
-            </div>
-        `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-            const previewDiv = document.getElementById('notePreview');
-
-            document.getElementById('addSelectedBtn')?.addEventListener('click', () => {
-                const checkboxes = document.querySelectorAll('.event-checkbox-input:checked');
-                checkboxes.forEach(cb => {
-                    const id = parseInt(cb.dataset.id);
-                    const event = allEvents.find(e => e.id === id);
-                    if (event && !selectedEvents.some(e => e.id === id)) {
-                        selectedEvents.push(event);
-                    }
-                });
-                updateSelectedList();
-                updateCheckboxes();
-            });
-
-            document.getElementById('clearSelectedBtn')?.addEventListener('click', () => {
-                selectedEvents = [];
-                updateSelectedList();
-                updateCheckboxes();
-            });
-
-            function generateMultiNoteText() {
-                if (selectedEvents.length === 0) return null;
-
-                const noteNumber = document.getElementById('noteNumber').value.trim() || '___';
-                const today = new Date().toLocaleDateString('ru-RU');
-
-                let allPrizeParticipants = [];
-
-                for (const ev of selectedEvents) {
-                    const fullEvent = eventsData[ev.status]?.find(e => e.id === ev.id);
-                    if (!fullEvent) continue;
-
-                    const prizeParticipants = fullEvent.participants.filter(p => PRIZE_RESULTS.includes(p.result));
-                    if (prizeParticipants.length > 0) {
-                        allPrizeParticipants.push({
-                            event: fullEvent,
-                            participants: prizeParticipants
-                        });
-                    }
+        }
+        
+        if (allPrizeParticipants.length === 0) {
+            alert("В выбранных мероприятиях нет призовых мест!");
+            return;
+        }
+        
+        let eventsText = '';
+        for (const item of allPrizeParticipants) {
+            const ev = item.event;
+            const groups = groupParticipantsBySupervisor(item.participants);
+            eventsText += `\n${'─'.repeat(70)}\n`;
+            eventsText += `МЕРОПРИЯТИЕ: ${ev.name}\n`;
+            eventsText += `Статус: ${ev.status}\n`;
+            eventsText += `Дата проведения: ${ev.date}\n`;
+            eventsText += `РЕЗУЛЬТАТЫ (призовые места):\n`;
+            for (const [sup, parts] of Object.entries(groups)) {
+                eventsText += `Руководитель: ${sup}\n`;
+                for (const p of parts) {
+                    eventsText += `  - ${p.full_name} (гр.${p.group}) — ${p.result}\n`;
                 }
-
-                if (allPrizeParticipants.length === 0) return null;
-
-                let eventsText = '';
-                for (const item of allPrizeParticipants) {
-                    const ev = item.event;
-                    const groups = groupParticipantsBySupervisor(item.participants);
-                    eventsText += `\n${'─'.repeat(70)}\n`;
-                    eventsText += `МЕРОПРИЯТИЕ: ${ev.name}\n`;
-                    eventsText += `Статус: ${ev.status}\n`;
-                    eventsText += `Дата проведения: ${ev.date}\n`;
-                    eventsText += `РЕЗУЛЬТАТЫ (призовые места):\n`;
-                    for (const [sup, parts] of Object.entries(groups)) {
-                        eventsText += `Руководитель: ${sup}\n`;
-                        for (const p of parts) {
-                            eventsText += `  - ${p.full_name} (гр.${p.group}) — ${p.result}\n`;
-                        }
-                    }
-                }
-
-                return `
+            }
+        }
+        
+        const result = `
 ═══════════════════════════════════════════════════════════════
                     СЛУЖЕБНАЯ ЗАПИСКА № ${noteNumber}
 ═══════════════════════════════════════════════════════════════
@@ -694,213 +558,124 @@ ${'═'.repeat(70)}
 ═══════════════════════════════════════════════════════════════
 Методист _________________ / Рахуба К.А. /
 ═══════════════════════════════════════════════════════════════
-            `;
-            }
+        `;
+        
+        navigator.clipboard.writeText(result);
+        alert("Текст служебной записки скопирован в буфер обмена!");
+    }
 
-            document.getElementById('generatePreviewBtn')?.addEventListener('click', () => {
-                if (selectedEvents.length === 0) {
-                    previewDiv.style.display = 'block';
-                    previewDiv.textContent = '⚠ Не выбрано ни одного мероприятия. Выберите мероприятия из списка выше.';
-                    previewDiv.style.color = '#dc3545';
-                    return;
-                }
-                const noteText = generateMultiNoteText();
-                if (noteText) {
-                    previewDiv.style.display = 'block';
-                    previewDiv.textContent = noteText;
-                    previewDiv.style.color = 'inherit';
-                } else {
-                    previewDiv.style.display = 'block';
-                    previewDiv.textContent = '⚠ В выбранных мероприятиях нет призовых мест (Диплом 1,2,3 место или Номинации). Служебная записка не формируется.';
-                    previewDiv.style.color = '#dc3545';
-                }
-            });
-
-            document.getElementById('copyNoteBtn')?.addEventListener('click', () => {
-                const text = previewDiv.textContent;
-                if (text && text.trim() && !text.includes('не выбрано') && !text.includes('нет призовых мест')) {
-                    navigator.clipboard.writeText(text);
-                    alert('Текст служебной записки скопирован в буфер обмена!');
-                } else if (text && (text.includes('не выбрано') || text.includes('нет призовых мест'))) {
-                    alert('Нет данных для копирования. Сначала выберите мероприятия и сформируйте текст.');
-                } else {
-                    alert('Сначала сформируйте текст служебной записки');
-                }
-            });
-
-            updateSelectedList();
+    function copyAllText() {
+        const events = eventsData[currentStatus] || [];
+        if (events.length === 0) {
+            alert('Нет данных для копирования');
+            return;
         }
+        let text = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 УЧЕБНЫЙ ГОД (СТУДЕНТЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
+        const sorted = sortEventsByDate(events);
+        for (let idx = 0; idx < sorted.length; idx++) {
+            const ev = sorted[idx];
+            text += `========================================\n`;
+            text += `№ ${idx+1}\n`;
+            text += `Наименование мероприятия: ${ev.name}\n`;
+            text += `Статус: ${ev.status}\n`;
+            text += `Организаторы: ${ev.organizers}\n`;
+            text += `Число участников: ${ev.participants_count}\n`;
+            text += `Дата проведения: ${ev.date}\n`;
+            text += `Результат: ${ev.participants[0]?.result || ''}\n`;
+            text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${ev.service_note_date})` : 'НЕ НАПИСАНА'}\n`;
+            text += `Участники, группа:\n`;
+            const groups = groupParticipantsBySupervisor(ev.participants);
+            for (const [sup, parts] of Object.entries(groups)) {
+                text += `   Руководитель: ${sup}\n`;
+                for (const p of parts) {
+                    text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`;
+                }
+            }
+            text += `========================================\n\n`;
+        }
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParts = 0;
+        for (const ev of sorted) {
+            for (const p of ev.participants) totalStats[p.result]++;
+            totalParts += ev.participants.length;
+        }
+        text += `ИТОГО:\n`;
+        text += `Участие: ${totalStats["Участие"]}   1-е место: ${totalStats["Диплом 1 место"]}   2-е место: ${totalStats["Диплом 2 место"]}   3-е место: ${totalStats["Диплом 3 место"]}   Номинации: ${totalStats["Номинация"]}\n`;
+        text += `ВСЕГО УЧАСТНИКОВ: ${totalParts}\n`;
+        navigator.clipboard.writeText(text);
+        alert('Данные скопированы в буфер обмена');
+    }
 
-        function copyAllText() {
-            const events = eventsData[currentStatus] || [];
-            if (events.length === 0) {
-                alert('Нет данных для копирования');
+    function copyStats() {
+        const events = eventsData[currentStatus] || [];
+        const sorted = sortEventsByDate(events);
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParts = 0;
+        for (const ev of sorted) {
+            for (const p of ev.participants) totalStats[p.result]++;
+            totalParts += ev.participants.length;
+        }
+        let notesWritten = 0, notesNot = 0;
+        for (const ev of sorted) {
+            if (ev.service_note_written) notesWritten++;
+            else notesNot++;
+        }
+        let text = `СТАТИСТИКА ПО ${currentStatus} УРОВНЮ\n`;
+        text += `Участие: ${totalStats["Участие"]} | 1 место: ${totalStats["Диплом 1 место"]} | 2 место: ${totalStats["Диплом 2 место"]} | 3 место: ${totalStats["Диплом 3 место"]} | Номинации: ${totalStats["Номинация"]}\n`;
+        text += `Всего участников: ${totalParts}\n`;
+        text += `Служебные записки: написано ${notesWritten}, не написано ${notesNot}\n`;
+        navigator.clipboard.writeText(text);
+        alert('Статистика скопирована');
+    }
+
+    async function openUserManagement() {
+        const users = await loadUsers();
+        let userList = "ТЕКУЩИЕ ПОЛЬЗОВАТЕЛИ:\n\n";
+        for (const [login, data] of Object.entries(users)) {
+            userList += `Логин: ${login} | Имя: ${data.name} | Роль: ${data.role} | Пароль: ${data.password}\n`;
+        }
+        
+        const action = prompt(`${userList}\n\nЧто сделать?\n1 - Добавить пользователя\n2 - Удалить пользователя\n3 - Назад`, "3");
+        
+        if (action === "1") {
+            const newLogin = prompt("Логин:");
+            if (!newLogin) return;
+            const newPassword = prompt("Пароль:");
+            if (!newPassword) return;
+            const newName = prompt("Имя:");
+            if (!newName) return;
+            const newRole = prompt("Роль (admin/editor/viewer):", "viewer");
+            
+            const result = await saveUserToServer({ login: newLogin, password: newPassword, name: newName, role: newRole });
+            if (result) {
+                alert("Пользователь добавлен!");
+                eventsData = await loadEvents();
+                render();
+            } else {
+                alert("Ошибка при добавлении!");
+            }
+        } else if (action === "2") {
+            const deleteLogin = prompt("Введите логин пользователя для удаления:");
+            if (!deleteLogin || deleteLogin === "muhanov") {
+                alert("Нельзя удалить главного администратора!");
                 return;
             }
-            let text = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 УЧЕБНЫЙ ГОД (СТУДЕНТЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
-            const sorted = sortEventsByDate(events);
-            for (let idx = 0; idx < sorted.length; idx++) {
-                const ev = sorted[idx];
-                text += `========================================\n`;
-                text += `№ ${idx + 1}\n`;
-                text += `Наименование мероприятия: ${ev.name}\n`;
-                text += `Статус: ${ev.status}\n`;
-                text += `Организаторы: ${ev.organizers}\n`;
-                text += `Число участников: ${ev.participants_count}\n`;
-                text += `Дата проведения: ${ev.date}\n`;
-                text += `Результат: ${ev.participants[0]?.result || ''}\n`;
-                text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${ev.service_note_date})` : 'НЕ НАПИСАНА'}\n`;
-                text += `Участники, группа:\n`;
-                const groups = groupParticipantsBySupervisor(ev.participants);
-                for (const [sup, parts] of Object.entries(groups)) {
-                    text += `   Руководитель: ${sup}\n`;
-                    for (const p of parts) {
-                        text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`;
-                    }
-                }
-                text += `========================================\n\n`;
+            const result = await deleteUserOnServer(deleteLogin);
+            if (result) {
+                alert("Пользователь удалён!");
+                eventsData = await loadEvents();
+                render();
+            } else {
+                alert("Ошибка при удалении!");
             }
-            let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-            let totalParts = 0;
-            for (const ev of sorted) {
-                for (const p of ev.participants) totalStats[p.result]++;
-                totalParts += ev.participants.length;
-            }
-            text += `ИТОГО:\n`;
-            text += `Участие: ${totalStats["Участие"]}   1-е место: ${totalStats["Диплом 1 место"]}   2-е место: ${totalStats["Диплом 2 место"]}   3-е место: ${totalStats["Диплом 3 место"]}   Номинации: ${totalStats["Номинация"]}\n`;
-            text += `ВСЕГО УЧАСТНИКОВ: ${totalParts}\n`;
-            navigator.clipboard.writeText(text);
-            alert('Данные скопированы в буфер обмена');
         }
+    }
 
-        function copyStats() {
-            const events = eventsData[currentStatus] || [];
-            const sorted = sortEventsByDate(events);
-            let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-            let totalParts = 0;
-            for (const ev of sorted) {
-                for (const p of ev.participants) totalStats[p.result]++;
-                totalParts += ev.participants.length;
-            }
-            let notesWritten = 0, notesNot = 0;
-            for (const ev of sorted) {
-                if (ev.service_note_written) notesWritten++;
-                else notesNot++;
-            }
-            let text = `СТАТИСТИКА ПО ${currentStatus} УРОВНЮ\n`;
-            text += `Участие: ${totalStats["Участие"]} | 1 место: ${totalStats["Диплом 1 место"]} | 2 место: ${totalStats["Диплом 2 место"]} | 3 место: ${totalStats["Диплом 3 место"]} | Номинации: ${totalStats["Номинация"]}\n`;
-            text += `Всего участников: ${totalParts}\n`;
-            text += `Служебные записки: написано ${notesWritten}, не написано ${notesNot}\n`;
-            navigator.clipboard.writeText(text);
-            alert('Статистика скопирована');
-        }
-
-        async function openUserManagement() {
-            const users = await loadUsersFromServer();
-            let modalHtml = `
-            <div class="modal" id="userModal" style="display: flex;">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Управление пользователями</h3>
-                        <span class="close-modal" onclick="document.getElementById('userModal')?.remove()">&times;</span>
-                    </div>
-                    <table class="users-table">
-                        <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Пароль</th><th>Действия</th></tr></thead>
-                        <tbody id="userTableBody">
-                            ${Object.entries(users).map(([login, data]) => `
-                                <tr>
-                                    <td>${login}</td>
-                                    <td>${data.name}</td>
-                                    <td>${data.role === 'admin' ? 'Администратор' : (data.role === 'editor' ? 'Методист' : 'Просмотр')}</td>
-                                    <td>${data.password}</td>
-                                    <td><button class="edit-user-btn" data-login="${login}">✏️</button> <button class="delete-user-btn" data-login="${login}" ${login === 'muhanov' ? 'disabled' : ''}>🗑</button></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top: 1rem;">
-                        <h4>Добавить пользователя</h4>
-                        <div class="form-group"><label>Логин</label><input id="newLogin"></div>
-                        <div class="form-group"><label>Пароль</label><input id="newPassword"></div>
-                        <div class="form-group"><label>Имя</label><input id="newName"></div>
-                        <div class="form-group"><label>Роль</label><select id="newRole"><option value="viewer">Просмотр</option><option value="editor">Методист</option><option value="admin">Администратор</option></select></div>
-                        <button id="addUserSubmit">➕ Добавить</button>
-                    </div>
-                    <button id="closeUserModal" style="margin-top: 1rem;">Закрыть</button>
-                </div>
-            </div>
-        `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-            document.getElementById('closeUserModal')?.addEventListener('click', () => document.getElementById('userModal')?.remove());
-            document.getElementById('addUserSubmit')?.addEventListener('click', async () => {
-                const newLogin = document.getElementById('newLogin').value.trim();
-                const newPassword = document.getElementById('newPassword').value.trim();
-                const newName = document.getElementById('newName').value.trim();
-                const newRole = document.getElementById('newRole').value;
-                if (!newLogin || !newPassword || !newName) {
-                    alert('Заполните все поля');
-                    return;
-                }
-                const result = await saveUserToServer({ login: newLogin, password: newPassword, name: newName, role: newRole });
-                if (result) {
-                    document.getElementById('userModal')?.remove();
-                    alert('Пользователь добавлен');
-                } else {
-                    alert('Ошибка при добавлении');
-                }
-            });
-
-            document.querySelectorAll('.edit-user-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const login = btn.dataset.login;
-                    const usersData = await loadUsersFromServer();
-                    const user = usersData[login];
-                    const newLogin = prompt('Новый логин (оставьте пустым для сохранения)', login);
-                    const newPassword = prompt('Новый пароль', user.password);
-                    const newName = prompt('Новое имя', user.name);
-                    const newRole = prompt('Новая роль (admin/editor/viewer)', user.role);
-                    if (newPassword && newName && newRole) {
-                        const result = await updateUserOnServer({
-                            oldLogin: login,
-                            newLogin: newLogin && newLogin.trim() ? newLogin.trim() : login,
-                            password: newPassword,
-                            name: newName,
-                            role: newRole
-                        });
-                        if (result) {
-                            document.getElementById('userModal')?.remove();
-                            alert('Пользователь обновлён');
-                        } else {
-                            alert('Ошибка при обновлении');
-                        }
-                    }
-                });
-            });
-
-            document.querySelectorAll('.delete-user-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const login = btn.dataset.login;
-                    if (login === 'muhanov') return;
-                    if (confirm(`Удалить пользователя ${login}?`)) {
-                        const result = await deleteUserOnServer(login);
-                        if (result) {
-                            document.getElementById('userModal')?.remove();
-                            alert('Пользователь удалён');
-                        } else {
-                            alert('Ошибка при удалении');
-                        }
-                    }
-                });
-            });
-        }
-
-        // ==================== ЗАПУСК ====================
-        (async function init() {
-            eventsData = await loadEventsFromServer();
-            render();
-        })();
-    </script>
+    // ==================== ЗАПУСК ====================
+    (async function init() {
+        eventsData = await loadEvents();
+        render();
+    })();
+</script>
 </body>
-
 </html>
