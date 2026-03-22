@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
-    
-    <!-- Favicon с графиком -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
-
+    
 </head>
 <body>
 <div class="app-container" id="app">
@@ -16,15 +14,12 @@
 </div>
 
 <script>
-    // ==================== КОНСТАНТЫ ====================
     const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
     const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-    // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbxDRmKOMGk0KvCN7PUuceFxIZ6JMxLEaeiQm2yZK6fz69pgWgwlixiGwtNj1Ng-G-s/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbyZqbjci5KDpNdNQ7z6AeGC6xBlBp6UP13GTOCMPlS6WJUhQ7H6e6EEfcjjnvJ4oHw/exec";
 
-    // ==================== ФОРМАТИРОВАНИЕ ДАТЫ ====================
     function formatDate(dateString) {
         if (!dateString) return "";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
@@ -40,14 +35,12 @@
         }
     }
 
-    // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
     let currentUser = null;
     let currentStatus = STATUSES[0];
     let eventsData = {};
     let selectedEventId = null;
     let pendingParticipants = [];
 
-    // ==================== API ФУНКЦИИ ====================
     async function apiCall(action, data = {}) {
         try {
             const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
@@ -62,7 +55,6 @@
         }
     }
 
-    // ==================== ЗАГРУЗКА ДАННЫХ ====================
     async function loadUsers() {
         const users = await apiCall("getUsers");
         if (users) {
@@ -83,27 +75,11 @@
         return cached ? JSON.parse(cached) : {};
     }
 
-    async function saveEventToServer(eventData) {
-        return await apiCall("saveEvent", eventData);
-    }
+    async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
+    async function updateServiceNoteOnServer(eventId, written, date) { return await apiCall("updateServiceNote", { eventId, written, date }); }
+    async function saveUserToServer(userData) { return await apiCall("saveUser", userData); }
+    async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
 
-    async function updateServiceNoteOnServer(eventId, written, date) {
-        return await apiCall("updateServiceNote", { eventId, written, date });
-    }
-
-    async function saveUserToServer(userData) {
-        return await apiCall("saveUser", userData);
-    }
-
-    async function deleteUserOnServer(login) {
-        return await apiCall("deleteUser", { login });
-    }
-
-    async function clearAllDataOnServer(password) {
-        return await apiCall("clearAllData", { password });
-    }
-
-    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function sortEventsByDate(events) {
         return [...events].sort((a, b) => {
             const dateA = a.date.split('.').reverse().join('-');
@@ -132,7 +108,6 @@
         });
     }
 
-    // ==================== ОТРИСОВКА ====================
     function render() {
         const app = document.getElementById('app');
         if (!currentUser) {
@@ -313,7 +288,6 @@
         `;
     }
 
-    // ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
     function attachLoginEvents() {
         document.getElementById('loginBtn')?.addEventListener('click', async () => {
             const login = document.getElementById('login').value.trim();
@@ -359,15 +333,10 @@
             render();
         });
 
-        // КНОПКА ОЧИСТКИ ВСЕХ ДАННЫХ (работает!)
         document.getElementById('clearAllBtn')?.addEventListener('click', async () => {
-            if (!confirm('⚠️ ВНИМАНИЕ! Вы действительно хотите удалить ВСЕ мероприятия и участников?\n\nЭто действие НЕОБРАТИМО!')) {
-                return;
-            }
-            
+            if (!confirm('⚠️ ВНИМАНИЕ! Вы действительно хотите удалить ВСЕ мероприятия и участников?\n\nЭто действие НЕОБРАТИМО!')) return;
             const password = prompt('Введите пароль администратора для подтверждения:');
             if (!password) return;
-            
             const users = await loadUsers();
             if (users['muhanov'] && users['muhanov'].password === password) {
                 const result = await apiCall("clearAllData");
@@ -394,10 +363,7 @@
                 const group = document.getElementById('participantGroup').value.trim();
                 let supervisor = document.getElementById('participantSupervisor').value.trim();
                 const result = document.getElementById('participantResult').value;
-                if (!name || !group) {
-                    alert('Заполните ФИО и группу!');
-                    return;
-                }
+                if (!name || !group) { alert('Заполните ФИО и группу!'); return; }
                 if (!supervisor) supervisor = '—';
                 pendingParticipants.push({ full_name: name, group, supervisor, result });
                 updateParticipantsList();
@@ -416,21 +382,9 @@
                 const status = document.getElementById('eventStatus').value;
                 const organizers = document.getElementById('eventOrganizers').value.trim() || 'Не указаны';
                 const date = document.getElementById('eventDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                if (!name) {
-                    alert('Введите название мероприятия!');
-                    return;
-                }
-                if (pendingParticipants.length === 0) {
-                    alert('Добавьте хотя бы одного участника!');
-                    return;
-                }
-                const result = await saveEventToServer({
-                    name,
-                    status,
-                    organizers,
-                    date,
-                    participants: pendingParticipants
-                });
+                if (!name) { alert('Введите название мероприятия!'); return; }
+                if (pendingParticipants.length === 0) { alert('Добавьте хотя бы одного участника!'); return; }
+                const result = await saveEventToServer({ name, status, organizers, date, participants: pendingParticipants });
                 if (result) {
                     pendingParticipants = [];
                     document.getElementById('eventName').value = '';
@@ -440,9 +394,7 @@
                     eventsData = await loadEvents();
                     render();
                     alert('Мероприятие сохранено!');
-                } else {
-                    alert('Ошибка сохранения!');
-                }
+                } else { alert('Ошибка сохранения!'); }
             });
 
             document.getElementById('manageUsersBtn')?.addEventListener('click', () => openUserManagement());
@@ -452,10 +404,7 @@
     function updateParticipantsList() {
         const container = document.getElementById('participantsList');
         if (!container) return;
-        if (pendingParticipants.length === 0) {
-            container.innerHTML = '<div style="color: gray;">Список пуст</div>';
-            return;
-        }
+        if (pendingParticipants.length === 0) { container.innerHTML = '<div style="color: gray;">Список пуст</div>'; return; }
         let html = '';
         const groups = {};
         for (const p of pendingParticipants) {
@@ -473,58 +422,56 @@
         container.innerHTML = html;
     }
 
-async function openMarkNoteWindow() {
-    const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
-    if (!status || !STATUSES.includes(status)) {
-        alert("Неверный уровень!");
-        return;
+    // ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ ==========
+    async function openMarkNoteWindow() {
+        const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
+        if (!status || !STATUSES.includes(status)) {
+            alert("Неверный уровень!");
+            return;
+        }
+        
+        const eventsList = eventsData[status] || [];
+        if (eventsList.length === 0) {
+            alert("Нет мероприятий в этом уровне!");
+            return;
+        }
+        
+        let eventOptions = "";
+        for (let i = 0; i < eventsList.length; i++) {
+            eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
+        }
+        
+        const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
+        if (!eventNum) return;
+        
+        const idx = parseInt(eventNum) - 1;
+        if (idx < 0 || idx >= eventsList.length) {
+            alert("Неверный номер!");
+            return;
+        }
+        
+        const event = eventsList[idx];
+        let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+        if (!date) return;
+        
+        // Проверяем и форматируем дату, если пользователь ввёл в другом формате
+        if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
+            try {
+                let parsedDate = new Date(date);
+                if (!isNaN(parsedDate.getTime())) {
+                    let day = parsedDate.getDate().toString().padStart(2, '0');
+                    let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
+                    let year = parsedDate.getFullYear();
+                    date = `${day}.${month}.${year}`;
+                }
+            } catch(e) {}
+        }
+        
+        await updateServiceNoteOnServer(event.id, true, date);
+        eventsData = await loadEvents();
+        render();
+        alert(`Служебная записка отмечена! Дата: ${date}`);
     }
-    
-    const eventsList = eventsData[status] || [];
-    if (eventsList.length === 0) {
-        alert("Нет мероприятий в этом уровне!");
-        return;
-    }
-    
-    let eventOptions = "";
-    for (let i = 0; i < eventsList.length; i++) {
-        eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
-    }
-    
-    const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
-    if (!eventNum) return;
-    
-    const idx = parseInt(eventNum) - 1;
-    if (idx < 0 || idx >= eventsList.length) {
-        alert("Неверный номер!");
-        return;
-    }
-    
-    const event = eventsList[idx];
-    let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
-    if (!date) return;
-    
-    // ========== ВАЖНО: Проверяем и форматируем дату ==========
-    // Если пользователь ввёл дату в формате ДД.ММ.ГГГГ, оставляем как есть
-    // Если ввёл в другом формате, пытаемся преобразовать
-    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
-        try {
-            // Пробуем распарсить как ISO
-            let parsedDate = new Date(date);
-            if (!isNaN(parsedDate.getTime())) {
-                let day = parsedDate.getDate().toString().padStart(2, '0');
-                let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
-                let year = parsedDate.getFullYear();
-                date = `${day}.${month}.${year}`;
-            }
-        } catch(e) {}
-    }
-    
-    await updateServiceNoteOnServer(event.id, true, date);
-    eventsData = await loadEvents();
-    render();
-    alert(`Служебная записка отмечена! Дата: ${date}`);
-}
 
     function openMultiGenerateNoteWindow() {
         let allEvents = [];
@@ -556,17 +503,12 @@ async function openMarkNoteWindow() {
         const today = new Date().toLocaleDateString('ru-RU');
         
         let allPrizeParticipants = [];
-        
         for (const ev of selectedEvents) {
             const fullEvent = eventsData[ev.status]?.find(e => e.id === ev.id);
             if (!fullEvent) continue;
-            
             const prizeParticipants = fullEvent.participants.filter(p => PRIZE_RESULTS.includes(p.result));
             if (prizeParticipants.length > 0) {
-                allPrizeParticipants.push({
-                    event: fullEvent,
-                    participants: prizeParticipants
-                });
+                allPrizeParticipants.push({ event: fullEvent, participants: prizeParticipants });
             }
         }
         
@@ -617,10 +559,7 @@ ${'═'.repeat(70)}
 
     function copyAllText() {
         const events = eventsData[currentStatus] || [];
-        if (events.length === 0) {
-            alert('Нет данных для копирования');
-            return;
-        }
+        if (events.length === 0) { alert('Нет данных для копирования'); return; }
         let text = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 УЧЕБНЫЙ ГОД (СТУДЕНТЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
         const sorted = sortEventsByDate(events);
         for (let idx = 0; idx < sorted.length; idx++) {
@@ -696,33 +635,24 @@ ${'═'.repeat(70)}
             const newName = prompt("Имя:");
             if (!newName) return;
             const newRole = prompt("Роль (admin/editor/viewer):", "viewer");
-            
             const result = await saveUserToServer({ login: newLogin, password: newPassword, name: newName, role: newRole });
             if (result) {
                 alert("Пользователь добавлен!");
                 eventsData = await loadEvents();
                 render();
-            } else {
-                alert("Ошибка при добавлении!");
-            }
+            } else { alert("Ошибка при добавлении!"); }
         } else if (action === "2") {
             const deleteLogin = prompt("Введите логин пользователя для удаления:");
-            if (!deleteLogin || deleteLogin === "muhanov") {
-                alert("Нельзя удалить главного администратора!");
-                return;
-            }
+            if (!deleteLogin || deleteLogin === "muhanov") { alert("Нельзя удалить главного администратора!"); return; }
             const result = await deleteUserOnServer(deleteLogin);
             if (result) {
                 alert("Пользователь удалён!");
                 eventsData = await loadEvents();
                 render();
-            } else {
-                alert("Ошибка при удалении!");
-            }
+            } else { alert("Ошибка при удалении!"); }
         }
     }
 
-    // ==================== ЗАПУСК ====================
     (async function init() {
         eventsData = await loadEvents();
         render();
