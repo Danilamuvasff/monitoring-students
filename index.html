@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='0' y='80' font-size='80'%3E📊%3C/text%3E%3C/svg%3E">
+    <!-- Favicon с графиком -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
 </head>
 <body>
 <div class="app-container" id="app">
@@ -20,6 +21,29 @@
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
     const API_URL = "https://script.google.com/macros/s/AKfycbyZqbjci5KDpNdNQ7z6AeGC6xBlBp6UP13GTOCMPlS6WJUhQ7H6e6EEfcjjnvJ4oHw/exec";
+
+    // ==================== ФОРМАТИРОВАНИЕ ДАТЫ ====================
+    function formatDate(dateString) {
+        if (!dateString) return "";
+        
+        // Если дата уже в формате ДД.ММ.ГГГГ
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) {
+            return dateString;
+        }
+        
+        try {
+            let date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                return dateString;
+            }
+            let day = date.getDate().toString().padStart(2, '0');
+            let month = (date.getMonth() + 1).toString().padStart(2, '0');
+            let year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+        } catch(e) {
+            return dateString;
+        }
+    }
 
     // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
     let currentUser = null;
@@ -147,6 +171,10 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
                     </div>
                 </div>
             </div>
@@ -211,7 +239,7 @@
                     <div class="event-field"><span class="event-label">Статус:</span> ${ev.status}</div>
                     <div class="event-field"><span class="event-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
                     <div class="event-field"><span class="event-label">Число участников:</span> ${ev.participants_count}</div>
-                    <div class="event-field"><span class="event-label">Дата проведения:</span> ${ev.date}</div>
+                    <div class="event-field"><span class="event-label">Дата проведения:</span> ${formatDate(ev.date)}</div>
                     <div class="event-field"><span class="event-label">Результат:</span> ${ev.participants[0]?.result || ''}</div>
                     <div class="service-note-status"><span class="event-label">Служебная записка:</span> ${noteStatus}</div>
                     <div class="event-field"><span class="event-label">Участники, группа:</span></div>
@@ -448,7 +476,7 @@
         
         let eventOptions = "";
         for (let i = 0; i < eventsList.length; i++) {
-            eventOptions += `${i+1}. ${eventsList[i].name} (${eventsList[i].date})\n`;
+            eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
         }
         
         const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
@@ -484,7 +512,7 @@
         let eventList = "";
         
         for (let i = 0; i < allEvents.length; i++) {
-            eventList += `${i+1}. ${allEvents[i].name} (${allEvents[i].status}, ${allEvents[i].date})\n`;
+            eventList += `${i+1}. ${allEvents[i].name} (${allEvents[i].status}, ${formatDate(allEvents[i].date)})\n`;
         }
         
         const input = prompt(`Выберите номера мероприятий через запятую:\n\n${eventList}\n\nПример: 1,3,5`);
@@ -528,7 +556,7 @@
             eventsText += `\n${'─'.repeat(70)}\n`;
             eventsText += `МЕРОПРИЯТИЕ: ${ev.name}\n`;
             eventsText += `Статус: ${ev.status}\n`;
-            eventsText += `Дата проведения: ${ev.date}\n`;
+            eventsText += `Дата проведения: ${formatDate(ev.date)}\n`;
             eventsText += `РЕЗУЛЬТАТЫ (призовые места):\n`;
             for (const [sup, parts] of Object.entries(groups)) {
                 eventsText += `Руководитель: ${sup}\n`;
@@ -577,7 +605,7 @@ ${'═'.repeat(70)}
             text += `Статус: ${ev.status}\n`;
             text += `Организаторы: ${ev.organizers}\n`;
             text += `Число участников: ${ev.participants_count}\n`;
-            text += `Дата проведения: ${ev.date}\n`;
+            text += `Дата проведения: ${formatDate(ev.date)}\n`;
             text += `Результат: ${ev.participants[0]?.result || ''}\n`;
             text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${ev.service_note_date})` : 'НЕ НАПИСАНА'}\n`;
             text += `Участники, группа:\n`;
