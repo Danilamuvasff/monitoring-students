@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
+
 </head>
 <body>
 <div class="app-container" id="app">
@@ -19,22 +20,41 @@
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbwsl7N1eHpo2C6O0EU62jXB5tIui5jlm6_vOwAanK-6JoVW4K7jk3JbNGAkW6lE3yg/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbydtg28PQMM9bE1z2n2l2Xy9GzfsyeQp0Fcl_21d1fE69qTjsZgY_BSESmWY-9Quxg/exec";
 
-    // Функция форматирования даты
+    // ========== УЛУЧШЕННАЯ ФУНКЦИЯ ФОРМАТИРОВАНИЯ ДАТЫ ==========
     function formatDate(dateString) {
         if (!dateString) return "Дата не указана";
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
-        try {
-            let date = new Date(dateString);
-            if (isNaN(date.getTime())) return dateString;
-            let day = date.getDate().toString().padStart(2, '0');
-            let month = (date.getMonth() + 1).toString().padStart(2, '0');
-            let year = date.getFullYear();
-            return `${day}.${month}.${year}`;
-        } catch(e) {
+        
+        // Если уже в формате ДД.ММ.ГГГГ
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) {
             return dateString;
         }
+        
+        // Если пришло число (timestamp)
+        if (typeof dateString === 'number' || /^\d+$/.test(dateString)) {
+            let d = new Date(parseInt(dateString));
+            if (!isNaN(d.getTime())) {
+                let day = d.getDate().toString().padStart(2, '0');
+                let month = (d.getMonth() + 1).toString().padStart(2, '0');
+                let year = d.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+        }
+        
+        // Пробуем распарсить ISO строку
+        try {
+            let date = new Date(dateString);
+            if (!isNaN(date.getTime())) {
+                let day = date.getDate().toString().padStart(2, '0');
+                let month = (date.getMonth() + 1).toString().padStart(2, '0');
+                let year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+        } catch(e) {}
+        
+        // Если ничего не помогло, возвращаем как есть
+        return dateString;
     }
 
     function toRussianDate(dateInput) {
@@ -241,7 +261,6 @@
                     <div class="panel-title">➕ УПРАВЛЕНИЕ МЕРОПРИЯТИЯМИ</div>
                     
                     <div class="two-columns">
-                        <!-- ЛЕВАЯ КОЛОНКА: СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ -->
                         <div class="form-column">
                             <div class="panel-title" style="font-size: 1rem;">📝 СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ</div>
                             <div class="form-group">
@@ -277,7 +296,6 @@
                             <button id="saveEventBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ НОВОЕ МЕРОПРИЯТИЕ</button>
                         </div>
                         
-                        <!-- ПРАВАЯ КОЛОНКА: ДОБАВЛЕНИЕ В СУЩЕСТВУЮЩЕЕ -->
                         <div class="form-column">
                             <div class="panel-title" style="font-size: 1rem;">📌 ДОБАВЛЕНИЕ В СУЩЕСТВУЮЩЕЕ МЕРОПРИЯТИЕ</div>
                             <div class="form-group">
@@ -426,7 +444,6 @@
         }
 
         if (currentUser?.role === 'admin') {
-            // ========== ЛЕВАЯ ФОРМА ==========
             function updateParticipantsList() {
                 const container = document.getElementById('participantsList');
                 if (!container) return;
@@ -491,7 +508,6 @@
                 } else { alert('Ошибка сохранения!'); }
             });
 
-            // ========== ПРАВАЯ ФОРМА ==========
             function updateExistingParticipantsList() {
                 const container = document.getElementById('existingParticipantsList');
                 if (!container) return;
