@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
-    
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
     
-   </head>
+    
+</head>
 <body>
 <div class="app-container" id="app">
     <div class="loader">Загрузка...</div>
@@ -20,7 +20,7 @@
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbz-a2EHicjrkTfLCs4R7hnnWNhlZ41khayouS7_Ded7sZnxxpcDhSnG2cxfiypxbHw/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxBZLtadwW6E_-EtPNMqRTO0OPHlWb8_MB6D30vUcYA7n9slCNDyGHCzuXZJLbPow/exec";
 
     // ========== ФОРМАТИРОВАНИЕ ДАТЫ ==========
     function formatDate(dateString) {
@@ -65,7 +65,6 @@
     let eventsData = {};
     let selectedEventId = null;
     let pendingParticipants = [];
-    let existingParticipants = [];
 
     async function apiCall(action, data = {}) {
         try {
@@ -102,7 +101,6 @@
     }
 
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
-    async function addParticipantsToEvent(eventId, participants) { return await apiCall("addParticipantsToEvent", { eventId, participants }); }
     async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
     async function updateServiceNoteOnServer(eventId, written, date) { 
         const formattedDate = toRussianDate(date);
@@ -170,6 +168,10 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
                     </div>
                 </div>
             </div>
@@ -232,7 +234,7 @@
                     <div class="event-header">
                         <div class="event-number">№ ${idx+1}</div>
                         <div class="event-actions">
-                            ${isAdmin ? `<button class="edit-btn" onclick="window.openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
                         </div>
                     </div>
                     <div class="event-field"><span class="event-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
@@ -252,71 +254,40 @@
         if (isAdmin) {
             adminFormHtml = `
                 <div class="panel">
-                    <div class="panel-title">➕ УПРАВЛЕНИЕ МЕРОПРИЯТИЯМИ</div>
-                    
-                    <div class="two-columns">
-                        <div class="form-column">
-                            <div class="panel-title" style="font-size: 1rem;">📝 СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ</div>
-                            <div class="form-group">
-                                <label>Наименование мероприятия</label>
-                                <textarea id="eventName" rows="2"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>Статус</label>
-                                <select id="eventStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
-                            </div>
-                            <div class="form-group">
-                                <label>Организаторы</label>
-                                <textarea id="eventOrganizers" rows="2"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>Дата проведения (ДД.ММ.ГГГГ)</label>
-                                <input type="text" id="eventDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
-                            </div>
-                            
-                            <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 УЧАСТНИКИ</div>
-                            <div class="form-grid">
-                                <div class="form-group"><label>ФИО участника</label><input type="text" id="participantName"></div>
-                                <div class="form-group"><label>Группа</label><input type="text" id="participantGroup"></div>
-                                <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="participantSupervisor" placeholder="можно оставить пустым"></div>
-                                <div class="form-group"><label>Результат</label><select id="participantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button id="addParticipantBtn">➕ Добавить участника</button>
-                                <button id="clearParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
-                            </div>
-                            <div class="form-group" style="margin-top: 0.5rem;"><label>Добавленные участники:</label></div>
-                            <div id="participantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
-                            <button id="saveEventBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ НОВОЕ МЕРОПРИЯТИЕ</button>
-                        </div>
-                        
-                        <div class="form-column">
-                            <div class="panel-title" style="font-size: 1rem;">📌 ДОБАВЛЕНИЕ В СУЩЕСТВУЮЩЕЕ МЕРОПРИЯТИЕ</div>
-                            <div class="form-group">
-                                <label>Выберите мероприятие</label>
-                                <select id="existingEventSelect" style="width:100%; padding:0.5rem;">
-                                    <option value="">-- Выберите мероприятие --</option>
-                                </select>
-                            </div>
-                            
-                            <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 НОВЫЕ УЧАСТНИКИ</div>
-                            <div class="form-grid">
-                                <div class="form-group"><label>ФИО участника</label><input type="text" id="existingParticipantName"></div>
-                                <div class="form-group"><label>Группа</label><input type="text" id="existingParticipantGroup"></div>
-                                <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="existingParticipantSupervisor" placeholder="можно оставить пустым"></div>
-                                <div class="form-group"><label>Результат</label><select id="existingParticipantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button id="addToExistingParticipantBtn">➕ Добавить участника</button>
-                                <button id="clearExistingParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
-                            </div>
-                            <div class="form-group" style="margin-top: 0.5rem;"><label>Участники для добавления:</label></div>
-                            <div id="existingParticipantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
-                            <button id="addToExistingEventBtn" style="margin-top: 1rem; width:100%; background: #28a745;">➕ ДОБАВИТЬ В ВЫБРАННОЕ МЕРОПРИЯТИЕ</button>
-                        </div>
+                    <div class="panel-title">➕ СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ</div>
+                    <div class="form-group">
+                        <label>Наименование мероприятия</label>
+                        <textarea id="eventName" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="eventStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Организаторы</label>
+                        <textarea id="eventOrganizers" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="eventDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
                     </div>
                     
-                    <hr>
+                    <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 ДОБАВЛЕНИЕ УЧАСТНИКОВ</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>ФИО участника</label><input type="text" id="participantName"></div>
+                        <div class="form-group"><label>Группа</label><input type="text" id="participantGroup"></div>
+                        <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="participantSupervisor" placeholder="можно оставить пустым"></div>
+                        <div class="form-group"><label>Результат</label><select id="participantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="addParticipantBtn">➕ Добавить участника</button>
+                        <button id="clearParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
+                    </div>
+                    <div class="form-group" style="margin-top: 0.5rem;"><label>Добавленные участники:</label></div>
+                    <div id="participantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
+                    <button id="saveEventBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ МЕРОПРИЯТИЕ</button>
+                    
+                    <hr style="margin: 1rem 0;">
                     <div class="panel-title">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</div>
                     <button id="manageUsersBtn" class="btn-secondary">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</button>
                 </div>
@@ -606,96 +577,9 @@
                     document.getElementById('eventDate').value = '';
                     updateParticipantsList();
                     eventsData = await loadEvents();
-                    updateExistingEventSelect();
                     render();
                     alert('Мероприятие сохранено!');
                 } else { alert('Ошибка сохранения!'); }
-            });
-
-            function updateExistingParticipantsList() {
-                const container = document.getElementById('existingParticipantsList');
-                if (!container) return;
-                if (existingParticipants.length === 0) {
-                    container.innerHTML = '<div style="color: gray;">Список пуст</div>';
-                    return;
-                }
-                let html = '';
-                const groups = {};
-                for (const p of existingParticipants) {
-                    const sup = p.supervisor;
-                    if (!groups[sup]) groups[sup] = [];
-                    groups[sup].push(p);
-                }
-                for (const [sup, parts] of Object.entries(groups)) {
-                    html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
-                    for (let i=0; i<parts.length; i++) {
-                        html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (gr.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
-                    }
-                    html += '<div style="margin-bottom: 0.5rem;"></div>';
-                }
-                container.innerHTML = html;
-            }
-            
-            function updateExistingEventSelect() {
-                const select = document.getElementById('existingEventSelect');
-                if (!select) return;
-                
-                let options = '<option value="">-- Выберите мероприятие --</option>';
-                for (const status of STATUSES) {
-                    const events = eventsData[status] || [];
-                    if (events.length > 0) {
-                        for (const ev of events) {
-                            options += `<option value="${ev.id}" data-status="${status}">${status}: ${ev.id}. ${ev.name.substring(0, 50)} (${formatDate(ev.date)})</option>`;
-                        }
-                    }
-                }
-                select.innerHTML = options;
-            }
-            
-            updateExistingEventSelect();
-            
-            document.getElementById('addToExistingParticipantBtn')?.addEventListener('click', () => {
-                const name = document.getElementById('existingParticipantName').value.trim();
-                const group = document.getElementById('existingParticipantGroup').value.trim();
-                let supervisor = document.getElementById('existingParticipantSupervisor').value.trim();
-                const result = document.getElementById('existingParticipantResult').value;
-                if (!name || !group) { alert('Заполните ФИО и группу!'); return; }
-                if (!supervisor) supervisor = '—';
-                existingParticipants.push({ full_name: name, group, supervisor, result });
-                updateExistingParticipantsList();
-                document.getElementById('existingParticipantName').value = '';
-                document.getElementById('existingParticipantGroup').value = '';
-                document.getElementById('existingParticipantSupervisor').value = '';
-            });
-            
-            document.getElementById('clearExistingParticipantsBtn')?.addEventListener('click', () => {
-                existingParticipants = [];
-                updateExistingParticipantsList();
-            });
-            
-            document.getElementById('addToExistingEventBtn')?.addEventListener('click', async () => {
-                const select = document.getElementById('existingEventSelect');
-                const eventId = select.value;
-                if (!eventId) {
-                    alert('Выберите мероприятие!');
-                    return;
-                }
-                if (existingParticipants.length === 0) {
-                    alert('Добавьте хотя бы одного участника!');
-                    return;
-                }
-                
-                const result = await addParticipantsToEvent(parseInt(eventId), existingParticipants);
-                if (result) {
-                    existingParticipants = [];
-                    updateExistingParticipantsList();
-                    eventsData = await loadEvents();
-                    updateExistingEventSelect();
-                    render();
-                    alert('Участники успешно добавлены в мероприятие!');
-                } else {
-                    alert('Ошибка при добавлении!');
-                }
             });
 
             document.getElementById('manageUsersBtn')?.addEventListener('click', () => openUserManagement());
