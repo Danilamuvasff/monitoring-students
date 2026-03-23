@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
-
+    
 </head>
 <body>
 <div class="app-container" id="app">
@@ -20,29 +20,19 @@
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbxpGB2VkuTUIJWuwWQUbur7J-ghOP1dgqRUELMi8BZL9zQlBBwh69jvLX1SH4yjrg/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbz-a2EHicjrkTfLCs4R7hnnWNhlZ41khayouS7_Ded7sZnxxpcDhSnG2cxfiypxbHw/exec";
 
-    // ========== УЛУЧШЕННАЯ ФУНКЦИЯ ФОРМАТИРОВАНИЯ ДАТЫ ==========
+    // ========== ФОРМАТИРОВАНИЕ ДАТЫ ==========
     function formatDate(dateString) {
         if (!dateString) return "Дата не указана";
-        
-        // Если уже в формате ДД.ММ.ГГГГ
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) {
-            return dateString;
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
+        if (typeof dateString === 'number' && dateString > 40000) {
+            let date = new Date((dateString - 25569) * 86400000);
+            let day = date.getDate().toString().padStart(2, '0');
+            let month = (date.getMonth() + 1).toString().padStart(2, '0');
+            let year = date.getFullYear();
+            return `${day}.${month}.${year}`;
         }
-        
-        // Если пришло число (timestamp)
-        if (typeof dateString === 'number' || /^\d+$/.test(dateString)) {
-            let d = new Date(parseInt(dateString));
-            if (!isNaN(d.getTime())) {
-                let day = d.getDate().toString().padStart(2, '0');
-                let month = (d.getMonth() + 1).toString().padStart(2, '0');
-                let year = d.getFullYear();
-                return `${day}.${month}.${year}`;
-            }
-        }
-        
-        // Пробуем распарсить ISO строку
         try {
             let date = new Date(dateString);
             if (!isNaN(date.getTime())) {
@@ -52,8 +42,6 @@
                 return `${day}.${month}.${year}`;
             }
         } catch(e) {}
-        
-        // Если ничего не помогло, возвращаем как есть
         return dateString;
     }
 
@@ -115,6 +103,7 @@
 
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
     async function addParticipantsToEvent(eventId, participants) { return await apiCall("addParticipantsToEvent", { eventId, participants }); }
+    async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
     async function updateServiceNoteOnServer(eventId, written, date) { 
         const formattedDate = toRussianDate(date);
         return await apiCall("updateServiceNote", { eventId, written, date: formattedDate }); 
@@ -181,6 +170,10 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
                     </div>
                 </div>
             </div>
@@ -240,7 +233,12 @@
 
             eventsHtml += `
                 <div class="event-card" data-id="${ev.id}" data-status="${ev.status}">
-                    <div class="event-number">№ ${idx+1}</div>
+                    <div class="event-header">
+                        <div class="event-number">№ ${idx+1}</div>
+                        <div class="event-actions">
+                            ${isAdmin ? `<button class="edit-btn" onclick="openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
+                        </div>
+                    </div>
                     <div class="event-field"><span class="event-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
                     <div class="event-field"><span class="event-label">Статус:</span> ${ev.status}</div>
                     <div class="event-field"><span class="event-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
@@ -374,6 +372,126 @@
         `;
     }
 
+    // ========== РЕДАКТИРОВАНИЕ МЕРОПРИЯТИЯ ==========
+    function openEditEventModal(eventId) {
+        let event = null;
+        for (const status of STATUSES) {
+            event = eventsData[status]?.find(e => e.id === eventId);
+            if (event) break;
+        }
+        if (!event) return;
+        
+        const modalHtml = `
+            <div class="modal" id="editModal" style="display: flex;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>✏️ Редактирование мероприятия</h3>
+                        <span class="close-modal" onclick="document.getElementById('editModal')?.remove()">&times;</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Наименование мероприятия</label>
+                        <textarea id="editEventName" rows="2">${escapeHtml(event.name)}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="editEventStatus">${STATUSES.map(s => `<option value="${s}" ${event.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Организаторы</label>
+                        <textarea id="editEventOrganizers" rows="2">${escapeHtml(event.organizers)}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="editEventDate" value="${formatDate(event.date)}">
+                    </div>
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">👥 УЧАСТНИКИ</div>
+                    <div id="editParticipantsList">
+                        ${event.participants.map((p, idx) => `
+                            <div class="participant-row" data-idx="${idx}">
+                                <input type="text" class="edit-participant-name" value="${escapeHtml(p.full_name)}" placeholder="ФИО" style="flex:2">
+                                <input type="text" class="edit-participant-group" value="${escapeHtml(p.group)}" placeholder="Группа" style="flex:1">
+                                <input type="text" class="edit-participant-supervisor" value="${escapeHtml(p.supervisor)}" placeholder="Руководитель" style="flex:2">
+                                <select class="edit-participant-result" style="flex:1">
+                                    ${RESULTS.map(r => `<option value="${r}" ${p.result === r ? 'selected' : ''}>${r}</option>`).join('')}
+                                </select>
+                                <button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button id="addEditParticipantBtn" style="margin-top: 0.5rem;">➕ Добавить участника</button>
+                    
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="saveEditEventBtn" style="background: #28a745;">💾 СОХРАНИТЬ ИЗМЕНЕНИЯ</button>
+                        <button id="cancelEditBtn" class="btn-secondary">❌ ОТМЕНА</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById('addEditParticipantBtn')?.addEventListener('click', () => {
+            const container = document.getElementById('editParticipantsList');
+            const idx = container.children.length;
+            const newRow = document.createElement('div');
+            newRow.className = 'participant-row';
+            newRow.setAttribute('data-idx', idx);
+            newRow.innerHTML = `
+                <input type="text" class="edit-participant-name" placeholder="ФИО" style="flex:2">
+                <input type="text" class="edit-participant-group" placeholder="Группа" style="flex:1">
+                <input type="text" class="edit-participant-supervisor" placeholder="Руководитель" style="flex:2">
+                <select class="edit-participant-result" style="flex:1">
+                    ${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+                <button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button>
+            `;
+            container.appendChild(newRow);
+        });
+        
+        document.getElementById('saveEditEventBtn')?.addEventListener('click', async () => {
+            const updatedEvent = {
+                eventId: eventId,
+                name: document.getElementById('editEventName').value.trim(),
+                status: document.getElementById('editEventStatus').value,
+                organizers: document.getElementById('editEventOrganizers').value.trim() || 'Не указаны',
+                date: document.getElementById('editEventDate').value.trim(),
+                participants: []
+            };
+            
+            const rows = document.querySelectorAll('.participant-row');
+            for (const row of rows) {
+                const name = row.querySelector('.edit-participant-name')?.value.trim();
+                const group = row.querySelector('.edit-participant-group')?.value.trim();
+                let supervisor = row.querySelector('.edit-participant-supervisor')?.value.trim();
+                const result = row.querySelector('.edit-participant-result')?.value;
+                if (name && group) {
+                    if (!supervisor) supervisor = '—';
+                    updatedEvent.participants.push({ full_name: name, group, supervisor, result });
+                }
+            }
+            
+            if (updatedEvent.participants.length === 0) {
+                alert('Добавьте хотя бы одного участника!');
+                return;
+            }
+            
+            const result = await apiCall("updateEvent", updatedEvent);
+            if (result) {
+                eventsData = await loadEvents();
+                render();
+                document.getElementById('editModal')?.remove();
+                alert('Мероприятие успешно обновлено!');
+            } else {
+                alert('Ошибка при обновлении!');
+            }
+        });
+        
+        document.getElementById('cancelEditBtn')?.addEventListener('click', () => {
+            document.getElementById('editModal')?.remove();
+        });
+    }
+
     function attachLoginEvents() {
         document.getElementById('loginBtn')?.addEventListener('click', async () => {
             const login = document.getElementById('login').value.trim();
@@ -394,14 +512,6 @@
             btn.addEventListener('click', (e) => {
                 currentStatus = btn.dataset.status;
                 selectedEventId = null;
-                render();
-            });
-        });
-
-        document.querySelectorAll('.event-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                const id = parseInt(card.dataset.id);
-                selectedEventId = id;
                 render();
             });
         });
@@ -598,6 +708,68 @@
         }
     }
 
+    // ========== КОПИРОВАНИЕ ==========
+    function copyAllText() {
+        const events = eventsData[currentStatus] || [];
+        if (events.length === 0) { alert('Нет данных для копирования'); return; }
+        let text = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 УЧЕБНЫЙ ГОД (СТУДЕНТЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
+        const sorted = sortEventsByDate(events);
+        for (let idx = 0; idx < sorted.length; idx++) {
+            const ev = sorted[idx];
+            text += `========================================\n`;
+            text += `№ ${idx+1}\n`;
+            text += `Наименование мероприятия: ${ev.name}\n`;
+            text += `Статус: ${ev.status}\n`;
+            text += `Организаторы: ${ev.organizers}\n`;
+            text += `Число участников: ${ev.participants_count}\n`;
+            text += `Дата проведения: ${formatDate(ev.date)}\n`;
+            text += `Результат: ${ev.participants[0]?.result || ''}\n`;
+            text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${formatDate(ev.service_note_date)})` : 'НЕ НАПИСАНА'}\n`;
+            text += `Участники, группа:\n`;
+            const groups = groupParticipantsBySupervisor(ev.participants);
+            for (const [sup, parts] of Object.entries(groups)) {
+                text += `   Руководитель: ${sup}\n`;
+                for (const p of parts) {
+                    text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`;
+                }
+            }
+            text += `========================================\n\n`;
+        }
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParts = 0;
+        for (const ev of sorted) {
+            for (const p of ev.participants) totalStats[p.result]++;
+            totalParts += ev.participants.length;
+        }
+        text += `ИТОГО:\n`;
+        text += `Участие: ${totalStats["Участие"]}   1-е место: ${totalStats["Диплом 1 место"]}   2-е место: ${totalStats["Диплом 2 место"]}   3-е место: ${totalStats["Диплом 3 место"]}   Номинации: ${totalStats["Номинация"]}\n`;
+        text += `ВСЕГО УЧАСТНИКОВ: ${totalParts}\n`;
+        navigator.clipboard.writeText(text);
+        alert('Данные скопированы в буфер обмена');
+    }
+
+    function copyStats() {
+        const events = eventsData[currentStatus] || [];
+        const sorted = sortEventsByDate(events);
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParts = 0;
+        for (const ev of sorted) {
+            for (const p of ev.participants) totalStats[p.result]++;
+            totalParts += ev.participants.length;
+        }
+        let notesWritten = 0, notesNot = 0;
+        for (const ev of sorted) {
+            if (ev.service_note_written) notesWritten++;
+            else notesNot++;
+        }
+        let text = `СТАТИСТИКА ПО ${currentStatus} УРОВНЮ\n`;
+        text += `Участие: ${totalStats["Участие"]} | 1 место: ${totalStats["Диплом 1 место"]} | 2 место: ${totalStats["Диплом 2 место"]} | 3 место: ${totalStats["Диплом 3 место"]} | Номинации: ${totalStats["Номинация"]}\n`;
+        text += `Всего участников: ${totalParts}\n`;
+        text += `Служебные записки: написано ${notesWritten}, не написано ${notesNot}\n`;
+        navigator.clipboard.writeText(text);
+        alert('Статистика скопирована');
+    }
+
     async function openMarkNoteWindow() {
         const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
         if (!status || !STATUSES.includes(status)) {
@@ -731,67 +903,6 @@ ${'═'.repeat(70)}
         alert("Текст служебной записки скопирован в буфер обмена!");
     }
 
-    function copyAllText() {
-        const events = eventsData[currentStatus] || [];
-        if (events.length === 0) { alert('Нет данных для копирования'); return; }
-        let text = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 УЧЕБНЫЙ ГОД (СТУДЕНТЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
-        const sorted = sortEventsByDate(events);
-        for (let idx = 0; idx < sorted.length; idx++) {
-            const ev = sorted[idx];
-            text += `========================================\n`;
-            text += `№ ${idx+1}\n`;
-            text += `Наименование мероприятия: ${ev.name}\n`;
-            text += `Статус: ${ev.status}\n`;
-            text += `Организаторы: ${ev.organizers}\n`;
-            text += `Число участников: ${ev.participants_count}\n`;
-            text += `Дата проведения: ${formatDate(ev.date)}\n`;
-            text += `Результат: ${ev.participants[0]?.result || ''}\n`;
-            text += `Служебная записка: ${ev.service_note_written ? `НАПИСАНА (${formatDate(ev.service_note_date)})` : 'НЕ НАПИСАНА'}\n`;
-            text += `Участники, группа:\n`;
-            const groups = groupParticipantsBySupervisor(ev.participants);
-            for (const [sup, parts] of Object.entries(groups)) {
-                text += `   Руководитель: ${sup}\n`;
-                for (const p of parts) {
-                    text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`;
-                }
-            }
-            text += `========================================\n\n`;
-        }
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let totalParts = 0;
-        for (const ev of sorted) {
-            for (const p of ev.participants) totalStats[p.result]++;
-            totalParts += ev.participants.length;
-        }
-        text += `ИТОГО:\n`;
-        text += `Участие: ${totalStats["Участие"]}   1-е место: ${totalStats["Диплом 1 место"]}   2-е место: ${totalStats["Диплом 2 место"]}   3-е место: ${totalStats["Диплом 3 место"]}   Номинации: ${totalStats["Номинация"]}\n`;
-        text += `ВСЕГО УЧАСТНИКОВ: ${totalParts}\n`;
-        navigator.clipboard.writeText(text);
-        alert('Данные скопированы в буфер обмена');
-    }
-
-    function copyStats() {
-        const events = eventsData[currentStatus] || [];
-        const sorted = sortEventsByDate(events);
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let totalParts = 0;
-        for (const ev of sorted) {
-            for (const p of ev.participants) totalStats[p.result]++;
-            totalParts += ev.participants.length;
-        }
-        let notesWritten = 0, notesNot = 0;
-        for (const ev of sorted) {
-            if (ev.service_note_written) notesWritten++;
-            else notesNot++;
-        }
-        let text = `СТАТИСТИКА ПО ${currentStatus} УРОВНЮ\n`;
-        text += `Участие: ${totalStats["Участие"]} | 1 место: ${totalStats["Диплом 1 место"]} | 2 место: ${totalStats["Диплом 2 место"]} | 3 место: ${totalStats["Диплом 3 место"]} | Номинации: ${totalStats["Номинация"]}\n`;
-        text += `Всего участников: ${totalParts}\n`;
-        text += `Служебные записки: написано ${notesWritten}, не написано ${notesNot}\n`;
-        navigator.clipboard.writeText(text);
-        alert('Статистика скопирована');
-    }
-
     async function openUserManagement() {
         const users = await loadUsers();
         let userList = "ТЕКУЩИЕ ПОЛЬЗОВАТЕЛИ:\n\n";
@@ -826,6 +937,8 @@ ${'═'.repeat(70)}
             } else { alert("Ошибка при удалении!"); }
         }
     }
+
+    window.openEditEventModal = openEditEventModal;
 
     (async function init() {
         eventsData = await loadEvents();
