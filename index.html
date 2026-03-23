@@ -19,10 +19,9 @@
     const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-    // ========== ВСТАВЬТЕ ВАШ НОВЫЙ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbxvJFMz0IxlFNMNrrQOyb-Ny0BVgbWjuon0ieLRvJK9DxUmbdEYiqf-lkMaj94nyaM/exec";
+    // ========== ВСТАВЬТЕ ВАШ URL ==========
+    const API_URL = "https://script.google.com/macros/s/AKfycbynGDp574Wx21YORyKsq4T3AHgtqSG7ZxPARjh0C96wE0Q5rJ_gbldjylWyJvu4Kaw/exec";
 
-    // Форматирование даты в ДД.ММ.ГГГГ
     function formatDate(dateString) {
         if (!dateString) return "";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
@@ -38,7 +37,6 @@
         }
     }
 
-    // Преобразование даты перед отправкой
     function toRussianDate(dateInput) {
         if (!dateInput) return "";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateInput)) return dateInput;
@@ -95,12 +93,11 @@
     }
 
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
-    
+    async function addParticipantsToEvent(eventId, participants) { return await apiCall("addParticipantsToEvent", { eventId, participants }); }
     async function updateServiceNoteOnServer(eventId, written, date) { 
         const formattedDate = toRussianDate(date);
         return await apiCall("updateServiceNote", { eventId, written, date: formattedDate }); 
     }
-    
     async function saveUserToServer(userData) { return await apiCall("saveUser", userData); }
     async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
     async function clearAllDataOnServer() { return await apiCall("clearAllData"); }
@@ -261,6 +258,17 @@
                     <div class="form-group"><label>Добавленные участники:</label></div>
                     <div id="participantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
                     <button id="saveEventBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ МЕРОПРИЯТИЕ</button>
+                    
+                    <hr style="margin: 1rem 0;">
+                    <div class="panel-title">📝 ДОБАВИТЬ УЧАСТНИКОВ В СУЩЕСТВУЮЩЕЕ МЕРОПРИЯТИЕ</div>
+                    <div class="form-group">
+                        <label>Выберите мероприятие</label>
+                        <select id="existingEventSelect" style="width:100%; padding:0.5rem;">
+                            <option value="">-- Выберите мероприятие --</option>
+                        </select>
+                    </div>
+                    <button id="addToExistingEventBtn" class="btn-secondary">➕ Добавить участников в выбранное мероприятие</button>
+                    
                     <hr style="margin: 1rem 0;">
                     <div class="panel-title">👥 Управление пользователями</div>
                     <button id="manageUsersBtn" class="btn-secondary">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</button>
@@ -383,6 +391,54 @@
         }
 
         if (currentUser?.role === 'admin') {
+            // Заполнение списка существующих мероприятий
+            function updateExistingEventSelect() {
+                const select = document.getElementById('existingEventSelect');
+                if (!select) return;
+                
+                let options = '<option value="">-- Выберите мероприятие --</option>';
+                for (const status of STATUSES) {
+                    const events = eventsData[status] || [];
+                    if (events.length > 0) {
+                        for (const ev of events) {
+                            options += `<option value="${ev.id}" data-status="${status}">${status}: ${ev.id}. ${ev.name.substring(0, 50)} (${formatDate(ev.date)})</option>`;
+                        }
+                    }
+                }
+                select.innerHTML = options;
+            }
+            
+            // Обновляем список при загрузке
+            updateExistingEventSelect();
+            
+            // Добавление участников в существующее мероприятие
+            document.getElementById('addToExistingEventBtn')?.addEventListener('click', async () => {
+                const select = document.getElementById('existingEventSelect');
+                const eventId = select.value;
+                if (!eventId) {
+                    alert('Выберите мероприятие!');
+                    return;
+                }
+                
+                if (pendingParticipants.length === 0) {
+                    alert('Добавьте хотя бы одного участника!');
+                    return;
+                }
+                
+                const result = await addParticipantsToEvent(parseInt(eventId), pendingParticipants);
+                
+                if (result) {
+                    pendingParticipants = [];
+                    updateParticipantsList();
+                    eventsData = await loadEvents();
+                    updateExistingEventSelect();
+                    render();
+                    alert('Участники успешно добавлены в мероприятие!');
+                } else {
+                    alert('Ошибка при добавлении!');
+                }
+            });
+            
             document.getElementById('addParticipantBtn')?.addEventListener('click', () => {
                 const name = document.getElementById('participantName').value.trim();
                 const group = document.getElementById('participantGroup').value.trim();
@@ -478,7 +534,6 @@
         let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
         if (!date) return;
         
-        // Проверяем и форматируем дату
         if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
             try {
                 let parsedDate = new Date(date);
