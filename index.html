@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
+    
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -18,10 +19,11 @@
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbwJesJvvzZmgKpeivrCcLOStGmRYFYHWP6GIS9UhhVS_9GKVxrMQ87gH7dyu5YAaXY/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbwsl7N1eHpo2C6O0EU62jXB5tIui5jlm6_vOwAanK-6JoVW4K7jk3JbNGAkW6lE3yg/exec";
 
+    // Функция форматирования даты
     function formatDate(dateString) {
-        if (!dateString) return "";
+        if (!dateString) return "Дата не указана";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
         try {
             let date = new Date(dateString);
@@ -54,8 +56,8 @@
     let currentStatus = STATUSES[0];
     let eventsData = {};
     let selectedEventId = null;
-    let pendingParticipants = [];      // для создания нового мероприятия
-    let existingEventParticipants = []; // для добавления в существующее
+    let pendingParticipants = [];
+    let existingParticipants = [];
 
     async function apiCall(action, data = {}) {
         try {
@@ -256,7 +258,7 @@
                             </div>
                             <div class="form-group">
                                 <label>Дата проведения (ДД.ММ.ГГГГ)</label>
-                                <input type="text" id="eventDate" placeholder="ДД.ММ.ГГГГ">
+                                <input type="text" id="eventDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
                             </div>
                             
                             <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 УЧАСТНИКИ</div>
@@ -424,7 +426,7 @@
         }
 
         if (currentUser?.role === 'admin') {
-            // ========== ЛЕВАЯ ФОРМА: СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ ==========
+            // ========== ЛЕВАЯ ФОРМА ==========
             function updateParticipantsList() {
                 const container = document.getElementById('participantsList');
                 if (!container) return;
@@ -489,9 +491,7 @@
                 } else { alert('Ошибка сохранения!'); }
             });
 
-            // ========== ПРАВАЯ ФОРМА: ДОБАВЛЕНИЕ В СУЩЕСТВУЮЩЕЕ ==========
-            let existingParticipants = [];
-            
+            // ========== ПРАВАЯ ФОРМА ==========
             function updateExistingParticipantsList() {
                 const container = document.getElementById('existingParticipantsList');
                 if (!container) return;
