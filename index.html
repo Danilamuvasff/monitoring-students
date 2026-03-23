@@ -6,8 +6,6 @@
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
-    
-    
 </head>
 <body>
 <div class="app-container" id="app">
@@ -20,7 +18,7 @@
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
     // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/AKfycbxBZLtadwW6E_-EtPNMqRTO0OPHlWb8_MB6D30vUcYA7n9slCNDyGHCzuXZJLbPow/exec";
+    const API_URL = "https://script.google.com/macros/s/ВАШ_URL/exec";
 
     // ========== ФОРМАТИРОВАНИЕ ДАТЫ ==========
     function formatDate(dateString) {
@@ -63,7 +61,6 @@
     let currentUser = null;
     let currentStatus = STATUSES[0];
     let eventsData = {};
-    let selectedEventId = null;
     let pendingParticipants = [];
 
     async function apiCall(action, data = {}) {
@@ -102,13 +99,13 @@
 
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
     async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
+    async function deleteEventOnServer(eventId) { return await apiCall("deleteEvent", { eventId }); }
     async function updateServiceNoteOnServer(eventId, written, date) { 
         const formattedDate = toRussianDate(date);
         return await apiCall("updateServiceNote", { eventId, written, date: formattedDate }); 
     }
     async function saveUserToServer(userData) { return await apiCall("saveUser", userData); }
     async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
-    async function clearAllDataOnServer() { return await apiCall("clearAllData"); }
 
     function sortEventsByDate(events) {
         return [...events].sort((a, b) => {
@@ -226,11 +223,12 @@
                 : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
 
             eventsHtml += `
-                <div class="event-card" data-id="${ev.id}" data-status="${ev.status}">
+                <div class="event-card" data-id="${ev.id}">
                     <div class="event-header">
                         <div class="event-number">№ ${idx+1}</div>
                         <div class="event-actions">
                             ${isAdmin ? `<button class="btn-edit" onclick="window.openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteEventById(${ev.id})">🗑 Удалить</button>` : ''}
                         </div>
                     </div>
                     <div class="event-field"><span class="event-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
@@ -321,7 +319,6 @@
                     <button id="copyAllBtn">📋 Копировать всё</button>
                     <button id="copyStatsBtn">📊 Копировать статистику</button>
                     <button id="refreshBtn">🔄 Обновить</button>
-                    ${isAdmin ? `<button id="clearAllBtn" class="btn-danger">❌ Очистить всё</button>` : ''}
                 </div>
                 <div class="panel">
                     <div class="panel-title">📋 Мероприятия (${currentStatus} уровень)</div>
@@ -334,6 +331,35 @@
             </div>
         `;
     }
+
+    // ========== ГЛОБАЛЬНАЯ ФУНКЦИЯ УДАЛЕНИЯ ==========
+    window.deleteEventById = async function(eventId) {
+        let event = null;
+        for (const status of STATUSES) {
+            event = eventsData[status]?.find(e => e.id === eventId);
+            if (event) break;
+        }
+        if (!event) return;
+        
+        const password = prompt(`⚠️ Удаление мероприятия\n\nМероприятие: ${event.name}\nДата: ${formatDate(event.date)}\n\nВведите пароль администратора для подтверждения:`);
+        if (!password) return;
+        
+        const users = await loadUsers();
+        if (users['muhanov'] && users['muhanov'].password === password) {
+            if (confirm(`Вы действительно хотите удалить мероприятие?\n\n${event.name}\n\nЭто действие НЕОБРАТИМО!`)) {
+                const result = await deleteEventOnServer(eventId);
+                if (result) {
+                    eventsData = await loadEvents();
+                    render();
+                    alert('✅ Мероприятие успешно удалено!');
+                } else {
+                    alert('❌ Ошибка при удалении!');
+                }
+            }
+        } else {
+            alert('❌ Неверный пароль администратора!');
+        }
+    };
 
     // ========== ГЛОБАЛЬНАЯ ФУНКЦИЯ РЕДАКТИРОВАНИЯ ==========
     window.openEditEventModal = async function(eventId) {
@@ -437,7 +463,7 @@
                 return;
             }
             
-            const result = await apiCall("updateEvent", updatedEvent);
+            const result = await updateEventOnServer(updatedEvent);
             if (result) {
                 eventsData = await loadEvents();
                 render();
@@ -472,14 +498,12 @@
         document.querySelectorAll('.status-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 currentStatus = btn.dataset.status;
-                selectedEventId = null;
                 render();
             });
         });
 
         document.getElementById('logoutBtn')?.addEventListener('click', () => {
             currentUser = null;
-            selectedEventId = null;
             render();
         });
 
@@ -488,25 +512,6 @@
         document.getElementById('refreshBtn')?.addEventListener('click', async () => {
             eventsData = await loadEvents();
             render();
-        });
-
-        document.getElementById('clearAllBtn')?.addEventListener('click', async () => {
-            if (!confirm('⚠️ ВНИМАНИЕ! Вы действительно хотите удалить ВСЕ мероприятия и участников?\n\nЭто действие НЕОБРАТИМО!')) return;
-            const password = prompt('Введите пароль администратора для подтверждения:');
-            if (!password) return;
-            const users = await loadUsers();
-            if (users['muhanov'] && users['muhanov'].password === password) {
-                const result = await clearAllDataOnServer();
-                if (result) {
-                    eventsData = await loadEvents();
-                    render();
-                    alert('✅ Все данные успешно удалены!');
-                } else {
-                    alert('❌ Ошибка при удалении данных!');
-                }
-            } else {
-                alert('❌ Неверный пароль администратора!');
-            }
         });
 
         if (currentUser?.role === 'editor') {
