@@ -6,6 +6,7 @@
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
+
 </head>
 <body>
 <div class="app-container" id="app">
@@ -17,10 +18,8 @@
     const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
     const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-    // ========== ВСТАВЬТЕ ВАШ URL ==========
-    const API_URL = "https://script.google.com/macros/s/ВАШ_URL/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzb38CuU9UZHOydS-iW0-nBfxL7U2umD8ebCwjXFLFFCsucZm7C5vu5rn2ajIX0x5w/exec";
 
-    // ========== ФОРМАТИРОВАНИЕ ДАТЫ ==========
     function formatDate(dateString) {
         if (!dateString) return "Дата не указана";
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
@@ -43,25 +42,17 @@
         return dateString;
     }
 
-    function toRussianDate(dateInput) {
-        if (!dateInput) return "";
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateInput)) return dateInput;
-        try {
-            let d = new Date(dateInput);
-            if (!isNaN(d.getTime())) {
-                let day = d.getDate().toString().padStart(2, '0');
-                let month = (d.getMonth() + 1).toString().padStart(2, '0');
-                let year = d.getFullYear();
-                return `${day}.${month}.${year}`;
-            }
-        } catch(e) {}
-        return dateInput;
-    }
-
     let currentUser = null;
+    let currentView = "monitoring";
     let currentStatus = STATUSES[0];
     let eventsData = {};
     let pendingParticipants = [];
+    let commissions = [];
+    let ccTeachers = [];
+    let selectedTeacher = null;
+    let teacherEvents = [];
+    let teacherAchievements = [];
+    let teacherArticles = [];
 
     async function apiCall(action, data = {}) {
         try {
@@ -97,15 +88,67 @@
         return cached ? JSON.parse(cached) : {};
     }
 
+    async function loadCommissions() {
+        const data = await apiCall("getCycleCommissions");
+        if (data) {
+            commissions = data.slice(1).map(row => ({ id: row[0], name: row[1], chairman_username: row[2], chairman_name: row[3] }));
+            return commissions;
+        }
+        return [];
+    }
+
+    async function loadCCTeachers(ccId) {
+        const data = await apiCall("getCCTeachers", { cc_id: ccId });
+        if (data) {
+            ccTeachers = data;
+            return ccTeachers;
+        }
+        return [];
+    }
+
+    async function loadTeacherEvents(teacherName) {
+        const data = await apiCall("getTeacherEventsFromMonitoring", { teacher_name: teacherName });
+        if (data) {
+            teacherEvents = data;
+            return teacherEvents;
+        }
+        return [];
+    }
+
+    async function loadTeacherAchievements(teacherId) {
+        const data = await apiCall("getTeacherAchievements", { teacher_id: teacherId });
+        if (data) {
+            teacherAchievements = data;
+            return teacherAchievements;
+        }
+        return [];
+    }
+
+    async function loadTeacherArticles(teacherId) {
+        const data = await apiCall("getTeacherArticles", { teacher_id: teacherId });
+        if (data) {
+            teacherArticles = data;
+            return teacherArticles;
+        }
+        return [];
+    }
+
     async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
     async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
     async function deleteEventOnServer(eventId) { return await apiCall("deleteEvent", { eventId }); }
     async function updateServiceNoteOnServer(eventId, written, date) { 
-        const formattedDate = toRussianDate(date);
-        return await apiCall("updateServiceNote", { eventId, written, date: formattedDate }); 
+        return await apiCall("updateServiceNote", { eventId, written, date }); 
     }
     async function saveUserToServer(userData) { return await apiCall("saveUser", userData); }
+    async function updateUserOnServer(userData) { return await apiCall("updateUser", userData); }
     async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
+    async function addCCTeacherToServer(teacherData) { return await apiCall("addCCTeacher", teacherData); }
+    async function updateCCTeacherOnServer(teacherData) { return await apiCall("updateCCTeacher", teacherData); }
+    async function deleteCCTeacherOnServer(id) { return await apiCall("deleteCCTeacher", { id }); }
+    async function addTeacherAchievementToServer(achievementData) { return await apiCall("addTeacherAchievement", achievementData); }
+    async function deleteTeacherAchievementOnServer(id) { return await apiCall("deleteTeacherAchievement", { id }); }
+    async function addTeacherArticleToServer(articleData) { return await apiCall("addTeacherArticle", articleData); }
+    async function deleteTeacherArticleOnServer(id) { return await apiCall("deleteTeacherArticle", { id }); }
 
     function sortEventsByDate(events) {
         return [...events].sort((a, b) => {
@@ -133,6 +176,18 @@
             if (m === '>') return '&gt;';
             return m;
         });
+    }
+
+    function getTeacherStats(events) {
+        const stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let total = 0;
+        for (const ev of events) {
+            for (const p of ev.participants) {
+                stats[p.result] = (stats[p.result] || 0) + 1;
+                total++;
+            }
+        }
+        return { stats, total };
     }
 
     function render() {
@@ -165,6 +220,11 @@
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
                     <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
+                        <p>Доступные пользователи:</p>
+                        <p>rahuba / rahuba123 (методист)</p>
+                        <p>kamalova / kamalova123 (просмотр)</p>
+                        <p>muhanov / admin123 (администратор)</p>
+                        <p>fatkhullina / fatkhullina123 (председатель ЦК СГД)</p>
                     </div>
                 </div>
             </div>
@@ -175,7 +235,28 @@
         const role = currentUser.role;
         const isAdmin = role === 'admin';
         const isEditor = role === 'editor';
+        const isChairman = role === 'chairman';
         
+        let navHtml = `
+            <div class="nav-buttons">
+                <button class="nav-btn ${currentView === 'monitoring' ? 'active' : ''}" data-view="monitoring">📊 Мониторинг студентов</button>
+                ${isChairman ? `<button class="nav-btn ${currentView === 'mycc' ? 'active' : ''}" data-view="mycc">👥 Мой ЦК</button>` : ''}
+                ${isAdmin ? `<button class="nav-btn ${currentView === 'managecc' ? 'active' : ''}" data-view="managecc">⚙️ Управление ЦК</button>` : ''}
+            </div>
+        `;
+        
+        if (currentView === 'monitoring') {
+            return renderMonitoring(navHtml, isAdmin, isEditor);
+        } else if (currentView === 'mycc' && isChairman) {
+            return renderMyCC(navHtml);
+        } else if (currentView === 'managecc' && isAdmin) {
+            return renderManageCC(navHtml);
+        }
+        
+        return renderMonitoring(navHtml, isAdmin, isEditor);
+    }
+
+    function renderMonitoring(navHtml, isAdmin, isEditor) {
         const eventsForStatus = eventsData[currentStatus] || [];
         const sortedEvents = sortEventsByDate(eventsForStatus);
 
@@ -305,12 +386,13 @@
                     </div>
                     <div class="user-info">
                         <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : 'Просмотр')}</div>
+                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
                         <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
                     </div>
                 </div>
             </div>
             <div class="main-content">
+                ${navHtml}
                 <div class="status-buttons">
                     ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
                 </div>
@@ -332,36 +414,179 @@
         `;
     }
 
-    // ========== ГЛОБАЛЬНАЯ ФУНКЦИЯ УДАЛЕНИЯ ==========
-    window.deleteEventById = async function(eventId) {
-        let event = null;
-        for (const status of STATUSES) {
-            event = eventsData[status]?.find(e => e.id === eventId);
-            if (event) break;
-        }
-        if (!event) return;
-        
-        const password = prompt(`⚠️ Удаление мероприятия\n\nМероприятие: ${event.name}\nДата: ${formatDate(event.date)}\n\nВведите пароль администратора для подтверждения:`);
-        if (!password) return;
-        
-        const users = await loadUsers();
-        if (users['muhanov'] && users['muhanov'].password === password) {
-            if (confirm(`Вы действительно хотите удалить мероприятие?\n\n${event.name}\n\nЭто действие НЕОБРАТИМО!`)) {
-                const result = await deleteEventOnServer(eventId);
-                if (result) {
-                    eventsData = await loadEvents();
-                    render();
-                    alert('✅ Мероприятие успешно удалено!');
-                } else {
-                    alert('❌ Ошибка при удалении!');
-                }
-            }
+    function renderMyCC(navHtml) {
+        if (!selectedTeacher) {
+            return `
+                <div class="header">
+                    <div class="header-content">
+                        <div class="logo">
+                            <h1>УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026</h1>
+                            <p>Альметьевский политехнический техникум</p>
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                            <div class="user-role">Председатель ЦК</div>
+                            <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="main-content">
+                    ${navHtml}
+                    <div class="panel">
+                        <div class="panel-title">👥 Преподаватели ЦК</div>
+                        <div class="teachers-list" id="teachersList"></div>
+                    </div>
+                </div>
+            `;
         } else {
-            alert('❌ Неверный пароль администратора!');
+            return renderTeacherProfile(navHtml);
         }
+    }
+
+    function renderTeacherProfile(navHtml) {
+        const { stats: studentStats, total: studentTotal } = getTeacherStats(teacherEvents);
+        
+        const achievementsByStatus = {};
+        for (const a of teacherAchievements) {
+            if (!achievementsByStatus[a.status]) achievementsByStatus[a.status] = [];
+            achievementsByStatus[a.status].push(a);
+        }
+        
+        const articlesByStatus = {};
+        for (const a of teacherArticles) {
+            if (!articlesByStatus[a.status]) articlesByStatus[a.status] = [];
+            articlesByStatus[a.status].push(a);
+        }
+        
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">Председатель ЦК</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <button class="nav-btn" onclick="window.backToTeachers()" style="margin-bottom: 1rem;">← Назад к списку преподавателей</button>
+                
+                <div class="panel">
+                    <div class="panel-title">👩‍🏫 ${escapeHtml(selectedTeacher.teacher_name)}</div>
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📊 Статистика по студентам</div>
+                    <div class="stats-grid" style="margin-bottom: 1rem;">
+                        <span>📊 Участие: ${studentStats["Участие"]}</span>
+                        <span>🥇 1 место: ${studentStats["Диплом 1 место"]}</span>
+                        <span>🥈 2 место: ${studentStats["Диплом 2 место"]}</span>
+                        <span>🥉 3 место: ${studentStats["Диплом 3 место"]}</span>
+                        <span>🏆 Номинации: ${studentStats["Номинация"]}</span>
+                        <span>👥 Всего участников: ${studentTotal}</span>
+                    </div>
+                    
+                    <div class="panel-title" style="font-size: 1rem;">🏆 Достижения со студентами (по уровням)</div>
+                    ${STATUSES.map(status => {
+                        const events = teacherEvents.filter(e => e.status === status);
+                        if (events.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${events.map(e => `
+                                    <div class="event-item">
+                                        <strong>${escapeHtml(e.name)}</strong> (${formatDate(e.date)})<br>
+                                        <span style="font-size: 0.8rem;">Участники: ${e.participants.map(p => `${p.full_name} (${p.result})`).join(', ')}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">🏅 Личные достижения преподавателя</div>
+                    ${STATUSES.map(status => {
+                        const achievements = teacherAchievements.filter(a => a.status === status);
+                        if (achievements.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${achievements.map(a => `
+                                    <div class="achievement-item">
+                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)}) - ${a.result}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📄 Статьи преподавателя</div>
+                    ${STATUSES.map(status => {
+                        const articles = teacherArticles.filter(a => a.status === status);
+                        if (articles.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${articles.map(a => `
+                                    <div class="article-item">
+                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)})
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <div class="cc-stats">
+                        <strong>Итоговая статистика:</strong><br>
+                        Всего призовых мест со студентами: ${Object.values(studentStats).reduce((a,b) => a+b, 0) - studentStats["Участие"]}<br>
+                        Всего личных достижений: ${teacherAchievements.length}<br>
+                        Всего статей: ${teacherArticles.length}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderManageCC(navHtml) {
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">Администратор</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <div class="panel">
+                    <div class="panel-title">👥 Управление ЦК</div>
+                    <div class="form-group">
+                        <label>Выберите ЦК</label>
+                        <select id="ccSelect" style="margin-bottom: 1rem;">
+                            <option value="">-- Выберите ЦК --</option>
+                            ${commissions.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="ccTeachersPanel"></div>
+                    <button id="addTeacherBtn" style="margin-top: 1rem;">➕ Добавить преподавателя</button>
+                </div>
+            </div>
+        `;
+    }
+
+    window.backToTeachers = function() {
+        selectedTeacher = null;
+        render();
     };
 
-    // ========== ГЛОБАЛЬНАЯ ФУНКЦИЯ РЕДАКТИРОВАНИЯ ==========
     window.openEditEventModal = async function(eventId) {
         let event = null;
         for (const status of STATUSES) {
@@ -479,6 +704,99 @@
         });
     };
 
+    window.deleteEventById = async function(eventId) {
+        let event = null;
+        for (const status of STATUSES) {
+            event = eventsData[status]?.find(e => e.id === eventId);
+            if (event) break;
+        }
+        if (!event) return;
+        
+        const password = prompt(`⚠️ Удаление мероприятия\n\nМероприятие: ${event.name}\nДата: ${formatDate(event.date)}\n\nВведите пароль администратора для подтверждения:`);
+        if (!password) return;
+        
+        const users = await loadUsers();
+        if (users['muhanov'] && users['muhanov'].password === password) {
+            if (confirm(`Вы действительно хотите удалить мероприятие?\n\n${event.name}\n\nЭто действие НЕОБРАТИМО!`)) {
+                const result = await deleteEventOnServer(eventId);
+                if (result) {
+                    eventsData = await loadEvents();
+                    render();
+                    alert('✅ Мероприятие успешно удалено!');
+                } else {
+                    alert('❌ Ошибка при удалении!');
+                }
+            }
+        } else {
+            alert('❌ Неверный пароль администратора!');
+        }
+    };
+
+    async function loadTeachersForCC(ccId) {
+        const teachers = await loadCCTeachers(ccId);
+        const container = document.getElementById('ccTeachersPanel');
+        if (!container) return;
+        
+        if (teachers.length === 0) {
+            container.innerHTML = '<div style="color: gray;">Нет преподавателей в этом ЦК</div>';
+            return;
+        }
+        
+        let html = '<div class="teachers-list">';
+        for (const t of teachers) {
+            html += `
+                <div class="teacher-card" data-id="${t.id}">
+                    <div class="teacher-name">${escapeHtml(t.teacher_name)}</div>
+                    <div style="font-size: 0.8rem; color: var(--secondary);">ID: ${t.id} | Активен: ${t.active ? 'Да' : 'Нет'}</div>
+                    <div style="margin-top: 0.5rem;">
+                        <button class="btn-edit" onclick="editTeacher(${t.id}, '${escapeHtml(t.teacher_name)}', ${t.cc_id}, ${t.active})">✏️ Редактировать</button>
+                        <button class="btn-delete" onclick="deleteTeacher(${t.id})">🗑 Удалить</button>
+                        <button class="btn-secondary" onclick="viewTeacherAchievements(${t.id}, '${escapeHtml(t.teacher_name)}')">📊 Достижения</button>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    window.editTeacher = function(id, name, ccId, active) {
+        const newName = prompt("Введите новое имя преподавателя:", name);
+        if (!newName) return;
+        const newActive = confirm("Активен ли преподаватель? Нажмите OK если Да, Отмена если Нет");
+        
+        updateCCTeacherOnServer({ id, teacher_name: newName, cc_id: ccId, active: newActive }).then(() => {
+            const select = document.getElementById('ccSelect');
+            if (select && select.value) {
+                loadTeachersForCC(parseInt(select.value));
+            }
+            alert("Преподаватель обновлён!");
+        });
+    };
+
+    window.deleteTeacher = function(id) {
+        if (confirm("Удалить преподавателя?")) {
+            deleteCCTeacherOnServer(id).then(() => {
+                const select = document.getElementById('ccSelect');
+                if (select && select.value) {
+                    loadTeachersForCC(parseInt(select.value));
+                }
+                alert("Преподаватель удалён!");
+            });
+        }
+    };
+
+    window.viewTeacherAchievements = async function(id, name) {
+        const teacher = ccTeachers.find(t => t.id === id);
+        if (!teacher) return;
+        
+        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
+        await loadTeacherEvents(teacher.teacher_name);
+        await loadTeacherAchievements(teacher.id);
+        await loadTeacherArticles(teacher.id);
+        render();
+    };
+
     function attachLoginEvents() {
         document.getElementById('loginBtn')?.addEventListener('click', async () => {
             const login = document.getElementById('login').value.trim();
@@ -487,6 +805,10 @@
             if (users[login] && users[login].password === password) {
                 currentUser = { ...users[login], username: login };
                 eventsData = await loadEvents();
+                await loadCommissions();
+                if (currentUser.role === 'chairman' && currentUser.cc_id) {
+                    await loadCCTeachers(currentUser.cc_id);
+                }
                 render();
             } else {
                 alert('Неверный логин или пароль!');
@@ -495,31 +817,90 @@
     }
 
     function attachMainEvents() {
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                currentView = btn.dataset.view;
+                selectedTeacher = null;
+                render();
+            });
+        });
+        
         document.querySelectorAll('.status-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 currentStatus = btn.dataset.status;
                 render();
             });
         });
-
+        
+        const ccSelect = document.getElementById('ccSelect');
+        if (ccSelect) {
+            ccSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    loadTeachersForCC(parseInt(e.target.value));
+                } else {
+                    document.getElementById('ccTeachersPanel').innerHTML = '';
+                }
+            });
+        }
+        
+        const addTeacherBtn = document.getElementById('addTeacherBtn');
+        if (addTeacherBtn) {
+            addTeacherBtn.addEventListener('click', () => {
+                const ccSelect = document.getElementById('ccSelect');
+                if (!ccSelect.value) {
+                    alert('Сначала выберите ЦК!');
+                    return;
+                }
+                const teacherName = prompt('Введите ФИО преподавателя:');
+                if (!teacherName) return;
+                addCCTeacherToServer({ teacher_name: teacherName, cc_id: parseInt(ccSelect.value), active: true }).then(() => {
+                    loadTeachersForCC(parseInt(ccSelect.value));
+                    alert('Преподаватель добавлен!');
+                });
+            });
+        }
+        
+        const teachersList = document.getElementById('teachersList');
+        if (teachersList && !selectedTeacher) {
+            loadCCTeachers(currentUser.cc_id).then(() => {
+                if (ccTeachers.length === 0) {
+                    teachersList.innerHTML = '<div style="color: gray;">Нет преподавателей в вашем ЦК</div>';
+                    return;
+                }
+                let html = '';
+                for (const t of ccTeachers) {
+                    html += `
+                        <div class="teacher-card" onclick="selectTeacher(${t.id}, '${escapeHtml(t.teacher_name)}')">
+                            <div class="teacher-name">${escapeHtml(t.teacher_name)}</div>
+                            <div style="font-size: 0.8rem; color: var(--secondary);">Нажмите для просмотра достижений</div>
+                        </div>
+                    `;
+                }
+                teachersList.innerHTML = html;
+            });
+        }
+        
         document.getElementById('logoutBtn')?.addEventListener('click', () => {
             currentUser = null;
+            selectedTeacher = null;
             render();
         });
-
+        
         document.getElementById('copyAllBtn')?.addEventListener('click', () => copyAllText());
         document.getElementById('copyStatsBtn')?.addEventListener('click', () => copyStats());
         document.getElementById('refreshBtn')?.addEventListener('click', async () => {
             eventsData = await loadEvents();
             render();
         });
-
+        
         if (currentUser?.role === 'editor') {
             document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
             document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
         }
-
+        
         if (currentUser?.role === 'admin') {
+            let pendingParticipants = [];
+            
             function updateParticipantsList() {
                 const container = document.getElementById('participantsList');
                 if (!container) return;
@@ -543,7 +924,7 @@
                 }
                 container.innerHTML = html;
             }
-
+            
             document.getElementById('addParticipantBtn')?.addEventListener('click', () => {
                 const name = document.getElementById('participantName').value.trim();
                 const group = document.getElementById('participantGroup').value.trim();
@@ -557,12 +938,12 @@
                 document.getElementById('participantGroup').value = '';
                 document.getElementById('participantSupervisor').value = '';
             });
-
+            
             document.getElementById('clearParticipantsBtn')?.addEventListener('click', () => {
                 pendingParticipants = [];
                 updateParticipantsList();
             });
-
+            
             document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
                 const name = document.getElementById('eventName').value.trim();
                 const status = document.getElementById('eventStatus').value;
@@ -582,12 +963,21 @@
                     alert('Мероприятие сохранено!');
                 } else { alert('Ошибка сохранения!'); }
             });
-
+            
             document.getElementById('manageUsersBtn')?.addEventListener('click', () => openUserManagement());
         }
     }
 
-    // ========== КОПИРОВАНИЕ ==========
+    window.selectTeacher = async function(id, name) {
+        const teacher = ccTeachers.find(t => t.id === id);
+        if (!teacher) return;
+        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
+        await loadTeacherEvents(teacher.teacher_name);
+        await loadTeacherAchievements(teacher.id);
+        await loadTeacherArticles(teacher.id);
+        render();
+    };
+
     function copyAllText() {
         const events = eventsData[currentStatus] || [];
         if (events.length === 0) { alert('Нет данных для копирования'); return; }
@@ -786,7 +1176,7 @@ ${'═'.repeat(70)}
         const users = await loadUsers();
         let userList = "ТЕКУЩИЕ ПОЛЬЗОВАТЕЛИ:\n\n";
         for (const [login, data] of Object.entries(users)) {
-            userList += `Логин: ${login} | Имя: ${data.name} | Роль: ${data.role} | Пароль: ${data.password}\n`;
+            userList += `Логин: ${login} | Имя: ${data.name} | Роль: ${data.role} | ЦК ID: ${data.cc_id || '—'}\n`;
         }
         
         const action = prompt(`${userList}\n\nЧто сделать?\n1 - Добавить пользователя\n2 - Удалить пользователя\n3 - Назад`, "3");
@@ -798,11 +1188,14 @@ ${'═'.repeat(70)}
             if (!newPassword) return;
             const newName = prompt("Имя:");
             if (!newName) return;
-            const newRole = prompt("Роль (admin/editor/viewer):", "viewer");
-            const result = await saveUserToServer({ login: newLogin, password: newPassword, name: newName, role: newRole });
+            const newRole = prompt("Роль (admin/editor/viewer/chairman):", "viewer");
+            let ccId = null;
+            if (newRole === "chairman") {
+                ccId = prompt("Введите ID ЦК (1-12):");
+            }
+            const result = await saveUserToServer({ login: newLogin, password: newPassword, name: newName, role: newRole, cc_id: ccId });
             if (result) {
                 alert("Пользователь добавлен!");
-                eventsData = await loadEvents();
                 render();
             } else { alert("Ошибка при добавлении!"); }
         } else if (action === "2") {
@@ -811,7 +1204,6 @@ ${'═'.repeat(70)}
             const result = await deleteUserOnServer(deleteLogin);
             if (result) {
                 alert("Пользователь удалён!");
-                eventsData = await loadEvents();
                 render();
             } else { alert("Ошибка при удалении!"); }
         }
@@ -819,6 +1211,7 @@ ${'═'.repeat(70)}
 
     (async function init() {
         eventsData = await loadEvents();
+        await loadCommissions();
         render();
     })();
 </script>
