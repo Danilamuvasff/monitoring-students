@@ -8,7 +8,7 @@
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
     
-</head>
+   </head>
 <body>
 <div class="app-container" id="app">
     <div class="loader">Загрузка...</div>
@@ -236,7 +236,7 @@
                     <div class="event-header">
                         <div class="event-number">№ ${idx+1}</div>
                         <div class="event-actions">
-                            ${isAdmin ? `<button class="edit-btn" onclick="openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="edit-btn" onclick="window.openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
                         </div>
                     </div>
                     <div class="event-field"><span class="event-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
@@ -372,8 +372,8 @@
         `;
     }
 
-    // ========== РЕДАКТИРОВАНИЕ МЕРОПРИЯТИЯ ==========
-    function openEditEventModal(eventId) {
+    // ========== ГЛОБАЛЬНАЯ ФУНКЦИЯ РЕДАКТИРОВАНИЯ ==========
+    window.openEditEventModal = async function(eventId) {
         let event = null;
         for (const status of STATUSES) {
             event = eventsData[status]?.find(e => e.id === eventId);
@@ -433,10 +433,8 @@
         
         document.getElementById('addEditParticipantBtn')?.addEventListener('click', () => {
             const container = document.getElementById('editParticipantsList');
-            const idx = container.children.length;
             const newRow = document.createElement('div');
             newRow.className = 'participant-row';
-            newRow.setAttribute('data-idx', idx);
             newRow.innerHTML = `
                 <input type="text" class="edit-participant-name" placeholder="ФИО" style="flex:2">
                 <input type="text" class="edit-participant-group" placeholder="Группа" style="flex:1">
@@ -490,7 +488,7 @@
         document.getElementById('cancelEditBtn')?.addEventListener('click', () => {
             document.getElementById('editModal')?.remove();
         });
-    }
+    };
 
     function attachLoginEvents() {
         document.getElementById('loginBtn')?.addEventListener('click', async () => {
@@ -635,7 +633,7 @@
                 for (const [sup, parts] of Object.entries(groups)) {
                     html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
                     for (let i=0; i<parts.length; i++) {
-                        html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
+                        html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (gr.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
                     }
                     html += '<div style="margin-bottom: 0.5rem;"></div>';
                 }
@@ -937,8 +935,6 @@ ${'═'.repeat(70)}
             } else { alert("Ошибка при удалении!"); }
         }
     }
-
-    window.openEditEventModal = openEditEventModal;
 
     (async function init() {
         eventsData = await loadEvents();
