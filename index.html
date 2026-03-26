@@ -62,7 +62,6 @@
     async function apiCall(action, data = {}) {
         try {
             const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
-            console.log("📡 Запрос:", action);
             const response = await fetch(url);
             const result = await response.json();
             if (result.success) return result.data;
@@ -232,8 +231,6 @@
                         <input type="password" id="password" placeholder="Введите пароль">
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
-                    <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
-                    </div>
                 </div>
             </div>
         `;
@@ -427,29 +424,529 @@
         `;
     }
 
-    // ... (остальные функции renderStudentOlympiads, renderTeacherContests, renderTeacherArticles, renderMyCC, renderManageCC, 
-    // и все модальные окна открываются с новым красивым дизайном)
+    function renderStudentOlympiads(navHtml, isAdmin, isEditor) {
+        const sortedOlympiads = sortByDate(studentOlympiads);
+        
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        let totalParticipants = 0;
+        let notesWritten = 0;
+        let notesNotWritten = 0;
+        
+        for (const o of sortedOlympiads) {
+            for (const p of o.participants) {
+                totalStats[p.result] = (totalStats[p.result] || 0) + 1;
+                totalParticipants++;
+            }
+            if (o.service_note_written) notesWritten++;
+            else notesNotWritten++;
+        }
+        
+        const statsHtml = `
+            <div class="stats">
+                <div class="stats-grid">
+                    <span>📊 Участие: ${totalStats["Участие"]}</span>
+                    <span>🥇 1 место: ${totalStats["Диплом 1 место"]}</span>
+                    <span>🥈 2 место: ${totalStats["Диплом 2 место"]}</span>
+                    <span>🥉 3 место: ${totalStats["Диплом 3 место"]}</span>
+                    <span>🏆 Номинации: ${totalStats["Номинация"]}</span>
+                    <span>👥 Всего участников: ${totalParticipants}</span>
+                </div>
+                <div style="margin-top: 0.5rem;">📋 Служебные записки: ✅ написано ${notesWritten} | ❌ не написано ${notesNotWritten}</div>
+            </div>
+        `;
+        
+        let itemsHtml = '';
+        for (let idx = 0; idx < sortedOlympiads.length; idx++) {
+            const o = sortedOlympiads[idx];
+            const groups = groupParticipantsBySupervisor(o.participants);
+            let participantsHtml = '';
+            for (const [sup, parts] of Object.entries(groups)) {
+                participantsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
+                for (const p of parts) {
+                    participantsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
+                }
+            }
+            const noteStatus = o.service_note_written 
+                ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(o.service_note_date)})</span>`
+                : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
+            
+            itemsHtml += `
+                <div class="item-card" data-id="${o.id}">
+                    <div class="item-header">
+                        <div class="item-number">№ ${idx+1}</div>
+                        <div class="item-actions">
+                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditOlympiadModal(${o.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteOlympiadById(${o.id})">🗑 Удалить</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="item-field"><span class="item-label">Наименование олимпиады:</span> ${escapeHtml(o.name)}</div>
+                    <div class="item-field"><span class="item-label">Статус:</span> ${o.status}</div>
+                    <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(o.organizers)}</div>
+                    <div class="item-field"><span class="item-label">Число участников:</span> ${o.participants.length}</div>
+                    <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(o.date)}</div>
+                    <div class="service-note-status"><span class="item-label">Служебная записка:</span> ${noteStatus}</div>
+                    <div class="item-field"><span class="item-label">Участники, группа:</span></div>
+                    <div class="participant-list">${participantsHtml}</div>
+                </div>
+            `;
+        }
+        
+        let adminFormHtml = '';
+        if (isAdmin) {
+            adminFormHtml = `
+                <div class="panel">
+                    <div class="panel-title">➕ СОЗДАНИЕ НОВОЙ ОЛИМПИАДЫ</div>
+                    <div class="form-group">
+                        <label>Наименование олимпиады</label>
+                        <textarea id="olympiadName" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="olympiadStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Организаторы</label>
+                        <textarea id="olympiadOrganizers" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="olympiadDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
+                    </div>
+                    
+                    <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 ДОБАВЛЕНИЕ УЧАСТНИКОВ</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>ФИО участника</label><input type="text" id="olympiadParticipantName"></div>
+                        <div class="form-group"><label>Группа</label><input type="text" id="olympiadParticipantGroup"></div>
+                        <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="olympiadParticipantSupervisor" placeholder="можно оставить пустым"></div>
+                        <div class="form-group"><label>Результат</label><select id="olympiadParticipantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="addOlympiadParticipantBtn">➕ Добавить участника</button>
+                        <button id="clearOlympiadParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
+                    </div>
+                    <div class="form-group" style="margin-top: 0.5rem;"><label>Добавленные участники:</label></div>
+                    <div id="olympiadParticipantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
+                    <button id="saveOlympiadBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ ОЛИМПИАДУ</button>
+                </div>
+            `;
+        }
+        
+        let editorButtons = '';
+        if (isEditor) {
+            editorButtons = `
+                <button id="markServiceNoteOlympiadBtn" style="background: #28a745;">✍️ Отметить служебную записку</button>
+            `;
+        }
+        
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <div class="status-buttons">
+                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    ${editorButtons}
+                    <button id="copyAllBtn">📋 Копировать всё</button>
+                    <button id="copyStatsBtn">📊 Копировать статистику</button>
+                    <button id="refreshBtn">🔄 Обновить</button>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">📋 Студенческие олимпиады (${currentStatus} уровень)</div>
+                    <div class="items-list" id="itemsList">
+                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
+                    </div>
+                    ${statsHtml}
+                </div>
+                ${adminFormHtml}
+            </div>
+        `;
+    }
 
-    // Для краткости, остальные функции остаются без изменений, но с использованием новых классов модальных окон
-    // Они должны использовать структуру:
-    // <div class="modal" style="display: flex;">
-    //     <div class="modal-content">
-    //         <div class="modal-header">
-    //             <h3>Заголовок</h3>
-    //             <span class="close-modal">&times;</span>
-    //         </div>
-    //         <div class="modal-body">
-    //             ... содержимое ...
-    //         </div>
-    //         <div class="modal-footer">
-    //             <button class="btn-modal-secondary">Отмена</button>
-    //             <button class="btn-modal-primary">Сохранить</button>
-    //         </div>
-    //     </div>
-    // </div>
+    function renderTeacherContests(navHtml, isAdmin, isEditor) {
+        const sortedContests = sortByDate(teacherContests.filter(c => c.status === currentStatus));
+        
+        let itemsHtml = '';
+        for (let idx = 0; idx < sortedContests.length; idx++) {
+            const c = sortedContests[idx];
+            itemsHtml += `
+                <div class="item-card" data-id="${c.id}">
+                    <div class="item-header">
+                        <div class="item-number">№ ${idx+1}</div>
+                        <div class="item-actions">
+                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditTeacherContestModal(${c.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteTeacherContestById(${c.id})">🗑 Удалить</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="item-field"><span class="item-label">Наименование конкурса:</span> ${escapeHtml(c.name)}</div>
+                    <div class="item-field"><span class="item-label">Статус:</span> ${c.status}</div>
+                    <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(c.date)}</div>
+                    <div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(c.teacher_name)}</div>
+                    <div class="item-field"><span class="item-label">Результат:</span> ${c.result}</div>
+                </div>
+            `;
+        }
+        
+        let adminFormHtml = '';
+        if (isAdmin) {
+            adminFormHtml = `
+                <div class="panel">
+                    <div class="panel-title">➕ ДОБАВЛЕНИЕ КОНКУРСА ПРЕПОДАВАТЕЛЯ</div>
+                    <div class="form-group">
+                        <label>Наименование конкурса</label>
+                        <textarea id="contestName" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="contestStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="contestDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
+                    </div>
+                    <div class="form-group">
+                        <label>ФИО преподавателя</label>
+                        <input type="text" id="contestTeacherName">
+                    </div>
+                    <div class="form-group">
+                        <label>Результат</label>
+                        <select id="contestResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select>
+                    </div>
+                    <button id="saveContestBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ КОНКУРС</button>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <div class="status-buttons">
+                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <button id="copyAllBtn">📋 Копировать всё</button>
+                    <button id="copyStatsBtn">📊 Копировать статистику</button>
+                    <button id="refreshBtn">🔄 Обновить</button>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">📋 Конкурсы преподавателей (${currentStatus} уровень)</div>
+                    <div class="items-list" id="itemsList">
+                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
+                    </div>
+                </div>
+                ${adminFormHtml}
+            </div>
+        `;
+    }
 
-    // Функции открытия модальных окон (openEditEventModal, openEditOlympiadModal и т.д.) 
-    // нужно обновить, чтобы они использовали новую структуру с красивым дизайном.
+    function renderTeacherArticles(navHtml, isAdmin, isEditor) {
+        const sortedArticles = sortByDate(teacherArticles.filter(a => a.status === currentStatus));
+        
+        let itemsHtml = '';
+        for (let idx = 0; idx < sortedArticles.length; idx++) {
+            const a = sortedArticles[idx];
+            itemsHtml += `
+                <div class="item-card" data-id="${a.id}">
+                    <div class="item-header">
+                        <div class="item-number">№ ${idx+1}</div>
+                        <div class="item-actions">
+                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditTeacherArticleModal(${a.id})">✏️ Редактировать</button>` : ''}
+                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteTeacherArticleById(${a.id})">🗑 Удалить</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="item-field"><span class="item-label">Название статьи:</span> ${escapeHtml(a.name)}</div>
+                    <div class="item-field"><span class="item-label">Статус:</span> ${a.status}</div>
+                    <div class="item-field"><span class="item-label">Дата публикации:</span> ${formatDate(a.date)}</div>
+                    <div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(a.teacher_name)}</div>
+                </div>
+            `;
+        }
+        
+        let adminFormHtml = '';
+        if (isAdmin) {
+            adminFormHtml = `
+                <div class="panel">
+                    <div class="panel-title">➕ ДОБАВЛЕНИЕ СТАТЬИ ПРЕПОДАВАТЕЛЯ</div>
+                    <div class="form-group">
+                        <label>Название статьи</label>
+                        <textarea id="articleName" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="articleStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата публикации (ДД.ММ.ГГГГ)</label>
+                        <input type="text" id="articleDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
+                    </div>
+                    <div class="form-group">
+                        <label>ФИО преподавателя</label>
+                        <input type="text" id="articleTeacherName">
+                    </div>
+                    <button id="saveArticleBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ СТАТЬЮ</button>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <div class="status-buttons">
+                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <button id="copyAllBtn">📋 Копировать всё</button>
+                    <button id="copyStatsBtn">📊 Копировать статистику</button>
+                    <button id="refreshBtn">🔄 Обновить</button>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">📋 Статьи преподавателей (${currentStatus} уровень)</div>
+                    <div class="items-list" id="itemsList">
+                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
+                    </div>
+                </div>
+                ${adminFormHtml}
+            </div>
+        `;
+    }
+
+    function renderMyCC(navHtml) {
+        if (!selectedTeacher) {
+            return `
+                <div class="header">
+                    <div class="header-content">
+                        <div class="logo">
+                            <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                            <p>Альметьевский политехнический техникум</p>
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                            <div class="user-role">Председатель ЦК</div>
+                            <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="main-content">
+                    ${navHtml}
+                    <div class="panel">
+                        <div class="panel-title">👥 Преподаватели ЦК</div>
+                        <div class="teachers-list" id="teachersList"></div>
+                    </div>
+                </div>
+            `;
+        } else {
+            return renderTeacherProfile(navHtml);
+        }
+    }
+
+    function renderTeacherProfile(navHtml) {
+        const { stats: studentStats, total: studentTotal } = getTeacherStats(teacherEvents);
+        
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">Председатель ЦК</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <button class="nav-btn" onclick="window.backToTeachers()" style="margin-bottom: 1rem;">← Назад к списку преподавателей</button>
+                
+                <div class="panel">
+                    <div class="panel-title">👩‍🏫 ${escapeHtml(selectedTeacher.teacher_name)}</div>
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📊 Статистика по студентам</div>
+                    <div class="stats-grid" style="margin-bottom: 1rem;">
+                        <span>📊 Участие: ${studentStats["Участие"]}</span>
+                        <span>🥇 1 место: ${studentStats["Диплом 1 место"]}</span>
+                        <span>🥈 2 место: ${studentStats["Диплом 2 место"]}</span>
+                        <span>🥉 3 место: ${studentStats["Диплом 3 место"]}</span>
+                        <span>🏆 Номинации: ${studentStats["Номинация"]}</span>
+                        <span>👥 Всего участников: ${studentTotal}</span>
+                    </div>
+                    
+                    <div class="panel-title" style="font-size: 1rem;">🏆 Достижения со студентами (по уровням)</div>
+                    ${STATUSES.map(status => {
+                        const events = teacherEvents.filter(e => e.status === status);
+                        if (events.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${events.map(e => `
+                                    <div class="event-item">
+                                        <strong>${escapeHtml(e.name)}</strong> (${formatDate(e.date)})<br>
+                                        <span style="font-size: 0.8rem;">Участники: ${e.participants.map(p => `${p.full_name} (${p.result})`).join(', ')}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">🏅 Личные достижения преподавателя</div>
+                    ${STATUSES.map(status => {
+                        const achievements = teacherAchievements.filter(a => a.status === status);
+                        if (achievements.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${achievements.map(a => `
+                                    <div class="achievement-item">
+                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)}) - ${a.result}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <div class="cc-stats">
+                        <strong>Итоговая статистика:</strong><br>
+                        Всего призовых мест со студентами: ${Object.values(studentStats).reduce((a,b) => a+b, 0) - studentStats["Участие"]}<br>
+                        Всего личных достижений: ${teacherAchievements.length}<br>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderManageCC(navHtml) {
+        return `
+            <div class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
+                        <p>Альметьевский политехнический техникум</p>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
+                        <div class="user-role">Администратор</div>
+                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
+                    </div>
+                </div>
+            </div>
+            <div class="main-content">
+                ${navHtml}
+                <div class="panel">
+                    <div class="panel-title">👥 Управление ЦК</div>
+                    <div class="form-group">
+                        <label>Выберите ЦК</label>
+                        <select id="ccSelect" style="margin-bottom: 1rem;">
+                            <option value="">-- Выберите ЦК --</option>
+                            ${commissions.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="ccTeachersPanel"></div>
+                    <button id="addTeacherBtn" style="margin-top: 1rem;">➕ Добавить преподавателя</button>
+                    <hr style="margin: 1rem 0;">
+                    <div class="panel-title" style="font-size: 1rem;">➕ Добавить новый ЦК</div>
+                    <div class="form-group">
+                        <label>Название ЦК</label>
+                        <input type="text" id="newCCName">
+                    </div>
+                    <div class="form-group">
+                        <label>Логин председателя (опционально)</label>
+                        <input type="text" id="newCCChairmanLogin">
+                    </div>
+                    <div class="form-group">
+                        <label>Имя председателя (опционально)</label>
+                        <input type="text" id="newCCChairmanName">
+                    </div>
+                    <button id="addCCBtn">➕ Добавить ЦК</button>
+                </div>
+            </div>
+        `;
+    }
+
+    window.backToTeachers = function() {
+        selectedTeacher = null;
+        render();
+    };
+
+    window.selectTeacher = async function(id, name) {
+        const teacher = ccTeachers.find(t => t.id === id);
+        if (!teacher) return;
+        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
+        await loadTeacherEvents(teacher.teacher_name);
+        await loadTeacherAchievements(teacher.id);
+        render();
+    };
+
+    window.openEditEventModal = async function(eventId) {
+        alert("Функция редактирования будет добавлена в следующей версии");
+    };
+    
+    window.deleteEventById = async function(eventId) {
+        alert("Функция удаления будет добавлена в следующей версии");
+    };
+    
+    window.openEditOlympiadModal = async function(id) {
+        alert("Функция редактирования будет добавлена в следующей версии");
+    };
+    
+    window.deleteOlympiadById = async function(id) {
+        alert("Функция удаления будет добавлена в следующей версии");
+    };
+    
+    window.openEditTeacherContestModal = async function(id) {
+        alert("Функция редактирования будет добавлена в следующей версии");
+    };
+    
+    window.deleteTeacherContestById = async function(id) {
+        alert("Функция удаления будет добавлена в следующей версии");
+    };
+    
+    window.openEditTeacherArticleModal = async function(id) {
+        alert("Функция редактирования будет добавлена в следующей версии");
+    };
+    
+    window.deleteTeacherArticleById = async function(id) {
+        alert("Функция удаления будет добавлена в следующей версии");
+    };
 
     function attachLoginEvents() {
         document.getElementById('loginBtn')?.addEventListener('click', async () => {
@@ -508,6 +1005,7 @@
         if (currentUser?.role === 'editor') {
             document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
             document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
+            document.getElementById('markServiceNoteOlympiadBtn')?.addEventListener('click', () => openMarkOlympiadNoteWindow());
         }
         
         if (currentUser?.role === 'admin') {
@@ -676,7 +1174,70 @@
         }
     }
 
-    // Копирование
+    async function loadTeachersForCC(ccId) {
+        const teachers = await loadCCTeachers(ccId);
+        const container = document.getElementById('ccTeachersPanel');
+        if (!container) return;
+        
+        if (teachers.length === 0) {
+            container.innerHTML = '<div style="color: gray;">Нет преподавателей в этом ЦК</div>';
+            return;
+        }
+        
+        let html = '<div class="teachers-list">';
+        for (const t of teachers) {
+            html += `
+                <div class="teacher-card" data-id="${t.id}">
+                    <div class="teacher-name">${escapeHtml(t.teacher_name)}</div>
+                    <div style="font-size: 0.8rem; color: var(--secondary);">ID: ${t.id} | Активен: ${t.active ? 'Да' : 'Нет'}</div>
+                    <div style="margin-top: 0.5rem;">
+                        <button class="btn-edit" onclick="editTeacher(${t.id}, '${escapeHtml(t.teacher_name)}', ${t.cc_id}, ${t.active})">✏️ Редактировать</button>
+                        <button class="btn-delete" onclick="deleteTeacher(${t.id})">🗑 Удалить</button>
+                        <button class="btn-secondary" onclick="viewTeacherAchievements(${t.id}, '${escapeHtml(t.teacher_name)}')">📊 Достижения</button>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    window.editTeacher = function(id, name, ccId, active) {
+        const newName = prompt("Введите новое имя преподавателя:", name);
+        if (!newName) return;
+        const newActive = confirm("Активен ли преподаватель? Нажмите OK если Да, Отмена если Нет");
+        
+        updateCCTeacherOnServer({ id, teacher_name: newName, cc_id: ccId, active: newActive }).then(() => {
+            const select = document.getElementById('ccSelect');
+            if (select && select.value) {
+                loadTeachersForCC(parseInt(select.value));
+            }
+            alert("Преподаватель обновлён!");
+        });
+    };
+
+    window.deleteTeacher = function(id) {
+        if (confirm("Удалить преподавателя?")) {
+            deleteCCTeacherOnServer(id).then(() => {
+                const select = document.getElementById('ccSelect');
+                if (select && select.value) {
+                    loadTeachersForCC(parseInt(select.value));
+                }
+                alert("Преподаватель удалён!");
+            });
+        }
+    };
+
+    window.viewTeacherAchievements = async function(id, name) {
+        const teacher = ccTeachers.find(t => t.id === id);
+        if (!teacher) return;
+        
+        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
+        await loadTeacherEvents(teacher.teacher_name);
+        await loadTeacherAchievements(teacher.id);
+        render();
+    };
+
     function copyAllText() {
         let items = [];
         let title = '';
@@ -811,6 +1372,57 @@
         render();
         alert(`Служебная записка отмечена! Дата: ${date}`);
     }
+    
+    async function openMarkOlympiadNoteWindow() {
+        const status = prompt("Выберите уровень олимпиады:\n" + STATUSES.join("\n"), currentStatus);
+        if (!status || !STATUSES.includes(status)) {
+            alert("Неверный уровень!");
+            return;
+        }
+        
+        const olympiadsList = studentOlympiads.filter(o => o.status === status);
+        if (olympiadsList.length === 0) {
+            alert("Нет олимпиад в этом уровне!");
+            return;
+        }
+        
+        let eventOptions = "";
+        for (let i = 0; i < olympiadsList.length; i++) {
+            eventOptions += `${i+1}. ${olympiadsList[i].name} (${formatDate(olympiadsList[i].date)})\n`;
+        }
+        
+        const eventNum = prompt(`Выберите олимпиаду:\n${eventOptions}`, "1");
+        if (!eventNum) return;
+        
+        const idx = parseInt(eventNum) - 1;
+        if (idx < 0 || idx >= olympiadsList.length) {
+            alert("Неверный номер!");
+            return;
+        }
+        
+        const olympiad = olympiadsList[idx];
+        let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+        if (!date) return;
+        
+        if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
+            try {
+                let parsedDate = new Date(date);
+                if (!isNaN(parsedDate.getTime())) {
+                    let day = parsedDate.getDate().toString().padStart(2, '0');
+                    let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
+                    let year = parsedDate.getFullYear();
+                    date = `${day}.${month}.${year}`;
+                }
+            } catch(e) {}
+        }
+        
+        olympiad.service_note_written = true;
+        olympiad.service_note_date = date;
+        await updateStudentOlympiadOnServer(olympiad);
+        studentOlympiads = await loadStudentOlympiads();
+        render();
+        alert(`Служебная записка отмечена! Дата: ${date}`);
+    }
 
     function openMultiGenerateNoteWindow() {
         let allEvents = [];
@@ -932,16 +1544,6 @@ ${'═'.repeat(70)}
             } else { alert("Ошибка при удалении!"); }
         }
     }
-
-    window.openEditEventModal = async function(eventId) {
-        // ... (остаётся без изменений, но с использованием красивой структуры модального окна)
-        alert("Функция редактирования будет добавлена в следующей версии");
-    };
-    
-    window.deleteEventById = async function(eventId) {
-        // ... (остаётся без изменений)
-        alert("Функция удаления будет добавлена в следующей версии");
-    };
 
     (async function init() {
         eventsData = await loadEvents();

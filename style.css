@@ -28,14 +28,12 @@ body {
     --shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-/* Контейнер приложения */
 .app-container {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-/* Шапка сайта */
 .header {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
@@ -96,7 +94,6 @@ body {
     background: rgba(255,255,255,0.3);
 }
 
-/* Навигация */
 .nav-buttons {
     display: flex;
     gap: 0.5rem;
@@ -127,7 +124,6 @@ body {
     border-color: var(--primary);
 }
 
-/* Основной контент */
 .main-content {
     flex: 1;
     max-width: 1400px;
@@ -136,7 +132,6 @@ body {
     width: 100%;
 }
 
-/* Панели */
 .panel {
     background: white;
     border-radius: 12px;
@@ -154,7 +149,6 @@ body {
     color: var(--primary);
 }
 
-/* Формы */
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -194,7 +188,6 @@ textarea {
     min-height: 60px;
 }
 
-/* Кнопки */
 button {
     background: var(--primary);
     color: white;
@@ -223,7 +216,7 @@ button:active {
 }
 
 .btn-edit {
-    background: var(--warning);
+    background: #ffc107;
     color: #333;
     padding: 0.2rem 0.5rem;
     font-size: 0.8rem;
@@ -237,7 +230,7 @@ button:active {
 }
 
 .btn-delete {
-    background: var(--danger);
+    background: #dc3545;
     color: white;
     padding: 0.2rem 0.5rem;
     font-size: 0.8rem;
@@ -250,7 +243,6 @@ button:active {
     background: #c82333;
 }
 
-/* Кнопки статусов */
 .status-buttons {
     display: flex;
     flex-wrap: wrap;
@@ -281,7 +273,6 @@ button:active {
     border-color: var(--primary);
 }
 
-/* Списки мероприятий */
 .items-list {
     max-height: 55vh;
     overflow-y: auto;
@@ -330,7 +321,6 @@ button:active {
     display: inline-block;
 }
 
-/* Участники */
 .participant-list {
     margin-top: 0.5rem;
     padding-left: 1rem;
@@ -376,7 +366,6 @@ button:active {
     background: #c82333;
 }
 
-/* Служебные записки */
 .service-note-status {
     font-size: 0.85rem;
     margin-top: 0.3rem;
@@ -390,7 +379,6 @@ button:active {
     color: var(--danger);
 }
 
-/* Статистика */
 .stats {
     background: var(--primary-light);
     padding: 1rem;
@@ -406,7 +394,6 @@ button:active {
     justify-content: space-between;
 }
 
-/* Модальные окна */
 .modal {
     display: none;
     position: fixed;
@@ -508,7 +495,6 @@ button:active {
     background: #5a6268;
 }
 
-/* Преподаватели ЦК */
 .teachers-list {
     max-height: 60vh;
     overflow-y: auto;
@@ -536,7 +522,6 @@ button:active {
     font-size: 1rem;
 }
 
-/* Достижения */
 .achievement-item {
     border-left: 3px solid var(--success);
     padding-left: 0.5rem;
@@ -573,14 +558,12 @@ button:active {
     border: 1px solid var(--border);
 }
 
-/* Загрузчик */
 .loader {
     text-align: center;
     padding: 2rem;
     color: var(--secondary);
 }
 
-/* Адаптивность */
 @media (max-width: 768px) {
     .header-content {
         flex-direction: column;
