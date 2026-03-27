@@ -6,1656 +6,623 @@
     <title>Мониторинг мероприятий - Альметьевский политехнический техникум</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='50' width='15' height='40' fill='%23004d73'/%3E%3Crect x='35' y='30' width='15' height='60' fill='%23004d73'/%3E%3Crect x='60' y='10' width='15' height='80' fill='%23004d73'/%3E%3Crect x='85' y='40' width='15' height='50' fill='%23004d73'/%3E%3C/svg%3E">
-    </head>
+</head>
 <body>
-<div class="app-container" id="app">
-    <div class="loader">Загрузка...</div>
-</div>
+<div class="app-container" id="app"><div class="loader">Загрузка...</div></div>
 
 <script>
-    const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
-    const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
-    const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
+const STATUSES = ["Республиканский", "Муниципальный (Городской)", "Федеральный", "Всероссийский", "Международный"];
+const RESULTS = ["Участие", "Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
+const PRIZE_RESULTS = ["Диплом 1 место", "Диплом 2 место", "Диплом 3 место", "Номинация"];
 
-    // ⚠️ ВАЖНО: Замените этот URL на ваш актуальный URL веб-приложения Google Apps Script
-    const API_URL = "https://script.google.com/macros/s/AKfycbwOdqs-AEN_oTNVD0n10SuAzZs2KhGxxLYv6w-VD4orw5aSAXvXHMJMx-XtlXwX4Ps/exec";
+// ⚠️ ЗАМЕНИТЕ НА ВАШ URL
+const API_URL = "https://script.google.com/macros/s/AKfycbzY3k4MJPLtWWgLUHjQajSbA2bWjVAED9fOcuywPC72y9ITxv6kdYBxaRV2F9KxVBw/exec";
 
-    function formatDate(dateString) {
-        if (!dateString) return "Дата не указана";
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
-        if (typeof dateString === 'number' && dateString > 40000) {
-            let date = new Date((dateString - 25569) * 86400000);
-            let day = date.getDate().toString().padStart(2, '0');
-            let month = (date.getMonth() + 1).toString().padStart(2, '0');
-            let year = date.getFullYear();
-            return `${day}.${month}.${year}`;
+function formatDate(dateString) {
+    if (!dateString) return "Дата не указана";
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateString)) return dateString;
+    if (typeof dateString === 'number' && dateString > 40000) {
+        let date = new Date((dateString - 25569) * 86400000);
+        return `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}.${date.getFullYear()}`;
+    }
+    try {
+        let date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+            return `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}.${date.getFullYear()}`;
         }
-        try {
-            let date = new Date(dateString);
-            if (!isNaN(date.getTime())) {
-                let day = date.getDate().toString().padStart(2, '0');
-                let month = (date.getMonth() + 1).toString().padStart(2, '0');
-                let year = date.getFullYear();
-                return `${day}.${month}.${year}`;
-            }
-        } catch(e) {}
-        return dateString;
+    } catch(e) {}
+    return dateString;
+}
+
+let currentUser = null;
+let currentModule = "student_contests";
+let currentStatus = STATUSES[0];
+let eventsData = {};
+let studentOlympiads = [];
+let teacherContests = [];
+let teacherArticles = [];
+let commissions = [];
+let ccTeachers = [];
+let selectedTeacher = null;
+let teacherEvents = [];
+let teacherAchievements = [];
+let teacherPersonalArticles = [];
+let pendingParticipants = [];
+
+async function apiCall(action, data = {}) {
+    try {
+        const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
+        const response = await fetch(url);
+        const result = await response.json();
+        if (result.success) return result.data;
+        console.error('API Error:', result.error);
+        return null;
+    } catch (err) {
+        console.error('Network Error:', err);
+        return null;
     }
+}
 
-    let currentUser = null;
-    let currentModule = "student_contests";
-    let currentStatus = STATUSES[0];
-    let eventsData = {};
-    let studentOlympiads = [];
-    let teacherContests = [];
-    let teacherArticles = [];
-    let commissions = [];
-    let ccTeachers = [];
-    let selectedTeacher = null;
-    let teacherEvents = [];
-    let teacherAchievements = [];
-    let teacherPersonalArticles = [];
-    let pendingParticipants = [];
+async function loadUsers() {
+    const users = await apiCall("getUsers");
+    if (users) { localStorage.setItem("monitoring_users_cache", JSON.stringify(users)); return users; }
+    const cached = localStorage.getItem("monitoring_users_cache");
+    return cached ? JSON.parse(cached) : {};
+}
 
-    async function apiCall(action, data = {}) {
-        try {
-            const url = `${API_URL}?action=${action}&data=${encodeURIComponent(JSON.stringify(data))}`;
-            const response = await fetch(url);
-            const result = await response.json();
-            if (result.success) return result.data;
-            console.error('API Error:', result.error);
-            return null;
-        } catch (err) {
-            console.error('Network Error:', err);
-            return null;
+async function loadEvents() {
+    const events = await apiCall("getEvents");
+    if (events) { localStorage.setItem("monitoring_events_cache", JSON.stringify(events)); return events; }
+    const cached = localStorage.getItem("monitoring_events_cache");
+    return cached ? JSON.parse(cached) : {};
+}
+
+async function loadStudentOlympiads() { return await apiCall("getStudentOlympiads") || []; }
+async function loadTeacherContests() { return await apiCall("getTeacherContests") || []; }
+async function loadTeacherArticles() { return await apiCall("getTeacherArticles") || []; }
+async function loadCommissions() {
+    const data = await apiCall("getCycleCommissions");
+    if (data) { commissions = data.slice(1).map(row => ({ id: row[0], name: row[1], chairman_username: row[2], chairman_name: row[3] })); return commissions; }
+    return [];
+}
+async function loadCCTeachers(ccId) { const data = await apiCall("getCCTeachers", { cc_id: ccId }); if (data) { ccTeachers = data; return ccTeachers; } return []; }
+async function loadTeacherEvents(teacherName) { const data = await apiCall("getTeacherEventsFromMonitoring", { teacher_name: teacherName }); if (data) { teacherEvents = data; return teacherEvents; } return []; }
+async function loadTeacherAchievements(teacherId) { const data = await apiCall("getTeacherAchievements", { teacher_id: teacherId }); if (data) { teacherAchievements = data; return teacherAchievements; } return []; }
+
+async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
+async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
+async function deleteEventOnServer(eventId) { return await apiCall("deleteEvent", { eventId }); }
+async function updateServiceNoteOnServer(eventId, written, date) { return await apiCall("updateServiceNote", { eventId, written, date }); }
+async function saveStudentOlympiadToServer(data) { return await apiCall("saveStudentOlympiad", data); }
+async function updateStudentOlympiadOnServer(data) { return await apiCall("updateStudentOlympiad", data); }
+async function deleteStudentOlympiadOnServer(id) { return await apiCall("deleteStudentOlympiad", { id }); }
+async function saveTeacherContestToServer(data) { return await apiCall("saveTeacherContest", data); }
+async function updateTeacherContestOnServer(data) { return await apiCall("updateTeacherContest", data); }
+async function deleteTeacherContestOnServer(id) { return await apiCall("deleteTeacherContest", { id }); }
+async function saveTeacherArticleToServer(data) { return await apiCall("saveTeacherArticle", data); }
+async function updateTeacherArticleOnServer(data) { return await apiCall("updateTeacherArticle", data); }
+async function deleteTeacherArticleOnServer(id) { return await apiCall("deleteTeacherArticle", { id }); }
+async function saveTeacherAchievementToServer(data) { return await apiCall("saveTeacherAchievement", data); }
+async function deleteTeacherAchievementOnServer(id) { return await apiCall("deleteTeacherAchievement", { id }); }
+async function addCCTeacherToServer(data) { return await apiCall("addCCTeacher", data); }
+async function updateCCTeacherOnServer(data) { return await apiCall("updateCCTeacher", data); }
+async function deleteCCTeacherOnServer(id) { return await apiCall("deleteCCTeacher", { id }); }
+async function addCycleCommissionToServer(data) { return await apiCall("addCycleCommission", data); }
+async function saveUserToServer(data) { return await apiCall("saveUser", data); }
+async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
+
+function sortByDate(items) { return [...items].sort((a, b) => a.date.split('.').reverse().join('-').localeCompare(b.date.split('.').reverse().join('-'))); }
+function groupParticipantsBySupervisor(participants) { const groups = {}; for (const p of participants) { const sup = p.supervisor || "—"; if (!groups[sup]) groups[sup] = []; groups[sup].push(p); } return groups; }
+function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+function getTeacherStats(events) { const stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 }; let total = 0; for (const ev of events) for (const p of ev.participants) { stats[p.result]++; total++; } return { stats, total }; }
+
+function render() { document.getElementById('app').innerHTML = !currentUser ? renderLogin() : renderMain(); if (!currentUser) attachLoginEvents(); else attachMainEvents(); }
+
+function renderLogin() {
+    return `<div class="main-content" style="max-width:450px;margin:5rem auto;"><div class="panel" style="text-align:center;"><div style="margin-bottom:1.5rem;"><h2 style="color:var(--primary);">Мониторинг мероприятий</h2><p style="color:var(--secondary);">Научно-методический отдел</p><p style="font-size:0.85rem;">Альметьевский политехнический техникум</p></div>
+    <div class="form-group"><label>Логин</label><input type="text" id="login" placeholder="Введите логин"></div>
+    <div class="form-group"><label>Пароль</label><input type="password" id="password" placeholder="Введите пароль"></div>
+    <button id="loginBtn" style="margin-top:1rem;width:100%;">🔑 ВОЙТИ</button>
+    <div style="margin-top:1rem;font-size:0.75rem;color:var(--secondary);"></div></div></div>`;
+}
+
+function renderMain() {
+    const isAdmin = currentUser.role === 'admin';
+    const isEditor = currentUser.role === 'editor';
+    const isChairman = currentUser.role === 'chairman';
+    const navHtml = `<div class="nav-buttons"><button class="nav-btn ${currentModule === 'student_contests' ? 'active' : ''}" data-module="student_contests">🎓 Студенты (конкурсы)</button><button class="nav-btn ${currentModule === 'student_olympiads' ? 'active' : ''}" data-module="student_olympiads">🏅 Студенты (олимпиады)</button><button class="nav-btn ${currentModule === 'teacher_contests' ? 'active' : ''}" data-module="teacher_contests">👨‍🏫 Преподаватели (конкурсы)</button><button class="nav-btn ${currentModule === 'teacher_articles' ? 'active' : ''}" data-module="teacher_articles">📄 Преподаватели (статьи)</button>${isChairman ? `<button class="nav-btn ${currentModule === 'mycc' ? 'active' : ''}" data-module="mycc">👥 Мой ЦК</button>` : ''}${isAdmin ? `<button class="nav-btn ${currentModule === 'managecc' ? 'active' : ''}" data-module="managecc">⚙️ Управление ЦК</button>` : ''}</div>`;
+    if (currentModule === 'student_contests') return renderStudentContests(navHtml, isAdmin, isEditor);
+    if (currentModule === 'student_olympiads') return renderStudentOlympiads(navHtml, isAdmin, isEditor);
+    if (currentModule === 'teacher_contests') return renderTeacherContests(navHtml, isAdmin, isEditor);
+    if (currentModule === 'teacher_articles') return renderTeacherArticles(navHtml, isAdmin, isEditor);
+    if (currentModule === 'mycc' && isChairman) return renderMyCC(navHtml);
+    if (currentModule === 'managecc' && isAdmin) return renderManageCC(navHtml);
+    return renderStudentContests(navHtml, isAdmin, isEditor);
+}
+
+function renderStudentContests(navHtml, isAdmin, isEditor) {
+    const events = sortByDate(eventsData[currentStatus] || []);
+    let stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 }, participants = 0, notesWritten = 0;
+    for (const ev of events) { for (const p of ev.participants) { stats[p.result]++; participants++; } if (ev.service_note_written) notesWritten++; }
+    let itemsHtml = '';
+    for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        let partsHtml = '';
+        for (const [sup, parts] of Object.entries(groupParticipantsBySupervisor(ev.participants))) {
+            partsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
+            for (const p of parts) partsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
         }
+        itemsHtml += `<div class="item-card"><div class="item-header"><div class="item-number">№ ${i+1}</div><div class="item-actions">${isAdmin ? `<button class="btn-edit" onclick="openEditEventModal(${ev.id})">✏️</button><button class="btn-delete" onclick="deleteEventById(${ev.id})">🗑</button>` : ''}</div></div>
+        <div class="item-field"><span class="item-label">Наименование:</span> ${escapeHtml(ev.name)}</div>
+        <div class="item-field"><span class="item-label">Статус:</span> ${ev.status}</div>
+        <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
+        <div class="item-field"><span class="item-label">Дата:</span> ${formatDate(ev.date)}</div>
+        <div class="service-note-status"><span class="item-label">Служ. записка:</span> ${ev.service_note_written ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(ev.service_note_date)})</span>` : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`}</div>
+        <div class="item-field"><span class="item-label">Участники:</span></div><div class="participant-list">${partsHtml}</div></div>`;
     }
+    const adminForm = isAdmin ? `<div class="panel"><div class="panel-title">➕ НОВОЕ МЕРОПРИЯТИЕ</div><div class="form-group"><label>Наименование</label><textarea id="eventName" rows="2"></textarea></div>
+        <div class="form-group"><label>Статус</label><select id="eventStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Организаторы</label><textarea id="eventOrganizers" rows="2"></textarea></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="eventDate" value="${new Date().toLocaleDateString('ru-RU')}"></div>
+        <div class="panel-title">👥 УЧАСТНИКИ</div><div class="form-grid"><div class="form-group"><label>ФИО</label><input type="text" id="participantName"></div>
+        <div class="form-group"><label>Группа</label><input type="text" id="participantGroup"></div>
+        <div class="form-group"><label>Руководитель</label><input type="text" id="participantSupervisor"></div>
+        <div class="form-group"><label>Результат</label><select id="participantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div></div>
+        <div style="display:flex;gap:0.5rem;"><button id="addParticipantBtn">➕ Добавить</button><button id="clearParticipantsBtn" class="btn-secondary">🗑 Очистить</button></div>
+        <div id="participantsList" style="border:1px solid var(--border);border-radius:8px;padding:0.5rem;min-height:80px;margin-top:0.5rem;"></div>
+        <button id="saveEventBtn" style="margin-top:1rem;">💾 СОХРАНИТЬ</button><hr><button id="manageUsersBtn" class="btn-secondary">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</button></div>` : '';
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<div class="status-buttons">${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">${isEditor ? `<button id="markServiceNoteBtn">✍️ Отметить служебную записку</button><button id="generateServiceNoteBtn">📄 Сформировать служебную записку</button>` : ''}<button id="copyAllBtn">📋 Копировать всё</button><button id="copyStatsBtn">📊 Копировать статистику</button><button id="refreshBtn">🔄 Обновить</button></div>
+    <div class="panel"><div class="panel-title">📋 Студенческие конкурсы (${currentStatus})</div><div class="items-list">${itemsHtml || '<div style="padding:2rem;text-align:center;">Нет данных</div>'}</div><div class="stats"><div class="stats-grid"><span>📊 Участие: ${stats["Участие"]}</span><span>🥇 1 место: ${stats["Диплом 1 место"]}</span><span>🥈 2 место: ${stats["Диплом 2 место"]}</span><span>🥉 3 место: ${stats["Диплом 3 место"]}</span><span>🏆 Номинации: ${stats["Номинация"]}</span><span>👥 Всего: ${participants}</span></div><div>📋 Служебные записки: ✅ ${notesWritten} | ❌ ${events.length - notesWritten}</div></div></div>${adminForm}</div>`;
+}
 
-    async function loadUsers() {
-        const users = await apiCall("getUsers");
-        if (users) {
-            localStorage.setItem("monitoring_users_cache", JSON.stringify(users));
-            return users;
+function renderStudentOlympiads(navHtml, isAdmin, isEditor) {
+    const olympiads = sortByDate(studentOlympiads);
+    let stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 }, totalParts = 0, notesWritten = 0;
+    for (const o of olympiads) { for (const p of o.participants) { stats[p.result]++; totalParts++; } if (o.service_note_written) notesWritten++; }
+    let itemsHtml = '';
+    for (let i = 0; i < olympiads.length; i++) {
+        const o = olympiads[i];
+        let partsHtml = '';
+        for (const [sup, parts] of Object.entries(groupParticipantsBySupervisor(o.participants))) {
+            partsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
+            for (const p of parts) partsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
         }
-        const cached = localStorage.getItem("monitoring_users_cache");
-        return cached ? JSON.parse(cached) : {};
+        itemsHtml += `<div class="item-card"><div class="item-header"><div class="item-number">№ ${i+1}</div><div class="item-actions">${isAdmin ? `<button class="btn-edit" onclick="openEditOlympiadModal(${o.id})">✏️</button><button class="btn-delete" onclick="deleteOlympiadById(${o.id})">🗑</button>` : ''}</div></div>
+        <div class="item-field"><span class="item-label">Наименование:</span> ${escapeHtml(o.name)}</div><div class="item-field"><span class="item-label">Статус:</span> ${o.status}</div>
+        <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(o.organizers)}</div><div class="item-field"><span class="item-label">Дата:</span> ${formatDate(o.date)}</div>
+        <div class="service-note-status"><span class="item-label">Служ. записка:</span> ${o.service_note_written ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(o.service_note_date)})</span>` : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`}</div>
+        <div class="item-field"><span class="item-label">Участники:</span></div><div class="participant-list">${partsHtml}</div></div>`;
     }
+    const adminForm = isAdmin ? `<div class="panel"><div class="panel-title">➕ НОВАЯ ОЛИМПИАДА</div><div class="form-group"><label>Наименование</label><textarea id="olympiadName" rows="2"></textarea></div>
+        <div class="form-group"><label>Статус</label><select id="olympiadStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Организаторы</label><textarea id="olympiadOrganizers" rows="2"></textarea></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="olympiadDate" value="${new Date().toLocaleDateString('ru-RU')}"></div>
+        <div class="panel-title">👥 УЧАСТНИКИ</div><div class="form-grid"><div class="form-group"><label>ФИО</label><input type="text" id="olympiadParticipantName"></div>
+        <div class="form-group"><label>Группа</label><input type="text" id="olympiadParticipantGroup"></div>
+        <div class="form-group"><label>Руководитель</label><input type="text" id="olympiadParticipantSupervisor"></div>
+        <div class="form-group"><label>Результат</label><select id="olympiadParticipantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div></div>
+        <div style="display:flex;gap:0.5rem;"><button id="addOlympiadParticipantBtn">➕ Добавить</button><button id="clearOlympiadParticipantsBtn" class="btn-secondary">🗑 Очистить</button></div>
+        <div id="olympiadParticipantsList" style="border:1px solid var(--border);border-radius:8px;padding:0.5rem;min-height:80px;margin-top:0.5rem;"></div>
+        <button id="saveOlympiadBtn">💾 СОХРАНИТЬ</button></div>` : '';
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<div class="status-buttons">${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">${isEditor ? `<button id="markServiceNoteOlympiadBtn">✍️ Отметить служебную записку</button>` : ''}<button id="copyAllBtn">📋 Копировать всё</button><button id="copyStatsBtn">📊 Копировать статистику</button><button id="refreshBtn">🔄 Обновить</button></div>
+    <div class="panel"><div class="panel-title">📋 Студенческие олимпиады (${currentStatus})</div><div class="items-list">${itemsHtml || '<div style="padding:2rem;text-align:center;">Нет данных</div>'}</div><div class="stats"><div class="stats-grid"><span>📊 Участие: ${stats["Участие"]}</span><span>🥇 1 место: ${stats["Диплом 1 место"]}</span><span>🥈 2 место: ${stats["Диплом 2 место"]}</span><span>🥉 3 место: ${stats["Диплом 3 место"]}</span><span>🏆 Номинации: ${stats["Номинация"]}</span><span>👥 Всего: ${totalParts}</span></div><div>📋 Служебные записки: ✅ ${notesWritten} | ❌ ${olympiads.length - notesWritten}</div></div></div>${adminForm}</div>`;
+}
 
-    async function loadEvents() {
-        const events = await apiCall("getEvents");
-        if (events) { localStorage.setItem("monitoring_events_cache", JSON.stringify(events)); return events; }
-        const cached = localStorage.getItem("monitoring_events_cache");
-        return cached ? JSON.parse(cached) : {};
+function renderTeacherContests(navHtml, isAdmin, isEditor) {
+    const contests = sortByDate(teacherContests.filter(c => c.status === currentStatus));
+    let stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+    for (const c of contests) stats[c.result]++;
+    let itemsHtml = '';
+    for (let i = 0; i < contests.length; i++) {
+        const c = contests[i];
+        itemsHtml += `<div class="item-card"><div class="item-header"><div class="item-number">№ ${i+1}</div><div class="item-actions">${isAdmin ? `<button class="btn-edit" onclick="openEditTeacherContestModal(${c.id})">✏️</button><button class="btn-delete" onclick="deleteTeacherContestById(${c.id})">🗑</button>` : ''}</div></div>
+        <div class="item-field"><span class="item-label">Наименование:</span> ${escapeHtml(c.name)}</div><div class="item-field"><span class="item-label">Статус:</span> ${c.status}</div>
+        <div class="item-field"><span class="item-label">Дата:</span> ${formatDate(c.date)}</div><div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(c.teacher_name)}</div>
+        <div class="item-field"><span class="item-label">Результат:</span> ${c.result}</div></div>`;
     }
+    const adminForm = isAdmin ? `<div class="panel"><div class="panel-title">➕ ДОБАВЛЕНИЕ КОНКУРСА</div><div class="form-group"><label>Наименование</label><textarea id="contestName" rows="2"></textarea></div>
+        <div class="form-group"><label>Статус</label><select id="contestStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="contestDate" value="${new Date().toLocaleDateString('ru-RU')}"></div>
+        <div class="form-group"><label>ФИО преподавателя</label><input type="text" id="contestTeacherName"></div>
+        <div class="form-group"><label>Результат</label><select id="contestResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
+        <button id="saveContestBtn">💾 СОХРАНИТЬ</button></div>` : '';
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<div class="status-buttons">${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;"><button id="copyAllBtn">📋 Копировать всё</button><button id="copyStatsBtn">📊 Копировать статистику</button><button id="refreshBtn">🔄 Обновить</button></div>
+    <div class="panel"><div class="panel-title">📋 Конкурсы преподавателей (${currentStatus})</div><div class="items-list">${itemsHtml || '<div style="padding:2rem;text-align:center;">Нет данных</div>'}</div><div class="stats"><div class="stats-grid"><span>📊 Участие: ${stats["Участие"]}</span><span>🥇 1 место: ${stats["Диплом 1 место"]}</span><span>🥈 2 место: ${stats["Диплом 2 место"]}</span><span>🥉 3 место: ${stats["Диплом 3 место"]}</span><span>🏆 Номинации: ${stats["Номинация"]}</span><span>👥 Всего: ${contests.length}</span></div></div></div>${adminForm}</div>`;
+}
 
-    async function loadStudentOlympiads() {
-        const olympiads = await apiCall("getStudentOlympiads");
-        if (olympiads) return olympiads;
-        return [];
+function renderTeacherArticles(navHtml, isAdmin, isEditor) {
+    const articles = sortByDate(teacherArticles.filter(a => a.status === currentStatus));
+    let itemsHtml = '';
+    for (let i = 0; i < articles.length; i++) {
+        const a = articles[i];
+        itemsHtml += `<div class="item-card"><div class="item-header"><div class="item-number">№ ${i+1}</div><div class="item-actions">${isAdmin ? `<button class="btn-edit" onclick="openEditTeacherArticleModal(${a.id})">✏️</button><button class="btn-delete" onclick="deleteTeacherArticleById(${a.id})">🗑</button>` : ''}</div></div>
+        <div class="item-field"><span class="item-label">Название:</span> ${escapeHtml(a.name)}</div><div class="item-field"><span class="item-label">Статус:</span> ${a.status}</div>
+        <div class="item-field"><span class="item-label">Дата:</span> ${formatDate(a.date)}</div><div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(a.teacher_name)}</div></div>`;
     }
+    const adminForm = isAdmin ? `<div class="panel"><div class="panel-title">➕ ДОБАВЛЕНИЕ СТАТЬИ</div><div class="form-group"><label>Название</label><textarea id="articleName" rows="2"></textarea></div>
+        <div class="form-group"><label>Статус</label><select id="articleStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="articleDate" value="${new Date().toLocaleDateString('ru-RU')}"></div>
+        <div class="form-group"><label>ФИО преподавателя</label><input type="text" id="articleTeacherName"></div>
+        <button id="saveArticleBtn">💾 СОХРАНИТЬ</button></div>` : '';
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<div class="status-buttons">${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;"><button id="copyAllBtn">📋 Копировать всё</button><button id="copyStatsBtn">📊 Копировать статистику</button><button id="refreshBtn">🔄 Обновить</button></div>
+    <div class="panel"><div class="panel-title">📋 Статьи преподавателей (${currentStatus})</div><div class="items-list">${itemsHtml || '<div style="padding:2rem;text-align:center;">Нет данных</div>'}</div><div class="stats"><div class="stats-grid"><span>📄 Всего статей: ${articles.length}</span></div></div></div>${adminForm}</div>`;
+}
 
-    async function loadTeacherContests() {
-        const contests = await apiCall("getTeacherContests");
-        if (contests) return contests;
-        return [];
+function renderMyCC(navHtml) {
+    if (!selectedTeacher) {
+        return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">Председатель ЦК</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+        <div class="main-content">${navHtml}<div class="panel"><div class="panel-title">👥 Преподаватели ЦК</div><div class="teachers-list" id="teachersList"></div></div></div>`;
     }
+    return renderTeacherProfile(navHtml);
+}
 
-    async function loadTeacherArticles() {
-        const articles = await apiCall("getTeacherArticles");
-        if (articles) return articles;
-        return [];
-    }
+function renderTeacherProfile(navHtml) {
+    const { stats, total } = getTeacherStats(teacherEvents);
+    const personalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+    for (const a of teacherAchievements) personalStats[a.result]++;
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">Председатель ЦК</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<button class="nav-btn" onclick="backToTeachers()" style="margin-bottom:1rem;">← Назад</button>
+    <div class="panel"><div class="panel-title">👩‍🏫 ${escapeHtml(selectedTeacher.teacher_name)}</div>
+    <div class="panel-title">📊 Статистика по студентам</div><div class="stats-grid"><span>📊 Участие: ${stats["Участие"]}</span><span>🥇 1 место: ${stats["Диплом 1 место"]}</span><span>🥈 2 место: ${stats["Диплом 2 место"]}</span><span>🥉 3 место: ${stats["Диплом 3 место"]}</span><span>🏆 Номинации: ${stats["Номинация"]}</span><span>👥 Всего: ${total}</span></div>
+    <div class="panel-title">🏆 Достижения со студентами</div>${STATUSES.map(s => { const evs = teacherEvents.filter(e => e.status === s); return `<div><strong>${s}:</strong> ${evs.length ? evs.map(e => `<div class="event-item"><strong>${escapeHtml(e.name)}</strong> (${formatDate(e.date)})<br><span>Участники: ${e.participants.map(p => `${p.full_name} (${p.result})`).join(', ')}</span></div>`).join('') : 'Нет данных'}</div>`; }).join('')}
+    <div class="panel-title">🏅 Личные достижения</div><div class="stats-grid"><span>📊 Участие: ${personalStats["Участие"]}</span><span>🥇 1 место: ${personalStats["Диплом 1 место"]}</span><span>🥈 2 место: ${personalStats["Диплом 2 место"]}</span><span>🥉 3 место: ${personalStats["Диплом 3 место"]}</span><span>🏆 Номинации: ${personalStats["Номинация"]}</span><span>👥 Всего: ${teacherAchievements.length}</span></div>
+    ${STATUSES.map(s => { const ach = teacherAchievements.filter(a => a.status === s); return `<div><strong>${s}:</strong> ${ach.length ? ach.map(a => `<div class="achievement-item"><strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)}) - ${a.result}</div>`).join('') : 'Нет данных'}</div>`; }).join('')}
+    <div class="panel-title">📄 Статьи</div><div class="stats-grid"><span>📄 Всего: ${teacherPersonalArticles.length}</span></div>
+    ${STATUSES.map(s => { const art = teacherPersonalArticles.filter(a => a.status === s); return `<div><strong>${s}:</strong> ${art.length ? art.map(a => `<div class="article-item"><strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)})</div>`).join('') : 'Нет данных'}</div>`; }).join('')}
+    <div class="cc-stats"><strong>Итог:</strong> Призовых мест со студентами: ${Object.values(stats).reduce((a,b)=>a+b,0) - stats["Участие"]} | Личных достижений: ${teacherAchievements.length} | Статей: ${teacherPersonalArticles.length}</div></div></div>`;
+}
 
-    async function loadCommissions() {
-        const data = await apiCall("getCycleCommissions");
-        if (data) { commissions = data.slice(1).map(row => ({ id: row[0], name: row[1], chairman_username: row[2], chairman_name: row[3] })); return commissions; }
-        return [];
-    }
+function renderManageCC(navHtml) {
+    return `<div class="header"><div class="header-content"><div class="logo"><h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1><p>Альметьевский политехнический техникум</p></div><div class="user-info"><div class="user-name">${escapeHtml(currentUser.name)}</div><div class="user-role">Администратор</div><button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button></div></div></div>
+    <div class="main-content">${navHtml}<div class="panel"><div class="panel-title">👥 Управление ЦК</div><div class="form-group"><label>Выберите ЦК</label><select id="ccSelect"><option value="">-- Выберите ЦК --</option>${commissions.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}</select></div><div id="ccTeachersPanel"></div><button id="addTeacherBtn">➕ Добавить преподавателя</button><hr>
+    <div class="panel-title">➕ Добавить ЦК</div><div class="form-group"><label>Название</label><input type="text" id="newCCName"></div>
+    <div class="form-group"><label>Логин председателя</label><input type="text" id="newCCChairmanLogin"></div>
+    <div class="form-group"><label>Имя председателя</label><input type="text" id="newCCChairmanName"></div>
+    <button id="addCCBtn">➕ Добавить ЦК</button></div></div>`;
+}
 
-    async function loadCCTeachers(ccId) {
-        const data = await apiCall("getCCTeachers", { cc_id: ccId });
-        if (data) { ccTeachers = data; return ccTeachers; }
-        return [];
-    }
+window.backToTeachers = function() { selectedTeacher = null; render(); };
+window.selectTeacher = async function(id, name) { const t = ccTeachers.find(t => t.id === id); if (!t) return; selectedTeacher = { id: t.id, teacher_name: t.teacher_name }; await loadTeacherEvents(t.teacher_name); await loadTeacherAchievements(t.id); teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === t.teacher_name); render(); };
 
-    async function loadTeacherEvents(teacherName) {
-        const data = await apiCall("getTeacherEventsFromMonitoring", { teacher_name: teacherName });
-        if (data) { teacherEvents = data; return teacherEvents; }
-        return [];
-    }
-
-    async function loadTeacherAchievements(teacherId) {
-        const data = await apiCall("getTeacherAchievements", { teacher_id: teacherId });
-        if (data) { teacherAchievements = data; return teacherAchievements; }
-        return [];
-    }
-
-    async function saveEventToServer(eventData) { return await apiCall("saveEvent", eventData); }
-    async function updateEventOnServer(eventData) { return await apiCall("updateEvent", eventData); }
-    async function deleteEventOnServer(eventId) { return await apiCall("deleteEvent", { eventId }); }
-    async function updateServiceNoteOnServer(eventId, written, date) { return await apiCall("updateServiceNote", { eventId, written, date }); }
-    
-    async function saveStudentOlympiadToServer(data) { return await apiCall("saveStudentOlympiad", data); }
-    async function updateStudentOlympiadOnServer(data) { return await apiCall("updateStudentOlympiad", data); }
-    async function deleteStudentOlympiadOnServer(id) { return await apiCall("deleteStudentOlympiad", { id }); }
-    
-    async function saveTeacherContestToServer(data) { return await apiCall("saveTeacherContest", data); }
-    async function updateTeacherContestOnServer(data) { return await apiCall("updateTeacherContest", data); }
-    async function deleteTeacherContestOnServer(id) { return await apiCall("deleteTeacherContest", { id }); }
-    
-    async function saveTeacherArticleToServer(data) { return await apiCall("saveTeacherArticle", data); }
-    async function updateTeacherArticleOnServer(data) { return await apiCall("updateTeacherArticle", data); }
-    async function deleteTeacherArticleOnServer(id) { return await apiCall("deleteTeacherArticle", { id }); }
-    
-    async function saveTeacherAchievementToServer(data) { return await apiCall("saveTeacherAchievement", data); }
-    async function deleteTeacherAchievementOnServer(id) { return await apiCall("deleteTeacherAchievement", { id }); }
-    
-    async function addCCTeacherToServer(data) { return await apiCall("addCCTeacher", data); }
-    async function updateCCTeacherOnServer(data) { return await apiCall("updateCCTeacher", data); }
-    async function deleteCCTeacherOnServer(id) { return await apiCall("deleteCCTeacher", { id }); }
-    
-    async function addCycleCommissionToServer(data) { return await apiCall("addCycleCommission", data); }
-    async function updateCycleCommissionOnServer(data) { return await apiCall("updateCycleCommission", data); }
-    async function deleteCycleCommissionOnServer(id) { return await apiCall("deleteCycleCommission", { id }); }
-    
-    async function saveUserToServer(data) { return await apiCall("saveUser", data); }
-    async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
-
-    function sortByDate(items) {
-        return [...items].sort((a, b) => {
-            const dateA = a.date.split('.').reverse().join('-');
-            const dateB = b.date.split('.').reverse().join('-');
-            return dateA.localeCompare(dateB);
-        });
-    }
-
-    function groupParticipantsBySupervisor(participants) {
-        const groups = {};
-        for (const p of participants) {
-            const sup = p.supervisor || "—";
-            if (!groups[sup]) groups[sup] = [];
-            groups[sup].push(p);
-        }
-        return groups;
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    function getTeacherStats(events) {
-        const stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let total = 0;
-        for (const ev of events) {
-            for (const p of ev.participants) {
-                stats[p.result] = (stats[p.result] || 0) + 1;
-                total++;
-            }
-        }
-        return { stats, total };
-    }
-
-    function render() {
-        const app = document.getElementById('app');
-        if (!currentUser) {
-            app.innerHTML = renderLogin();
-            attachLoginEvents();
-        } else {
-            app.innerHTML = renderMain();
-            attachMainEvents();
-        }
-    }
-
-    function renderLogin() {
-        return `
-            <div class="main-content" style="max-width: 450px; margin: 5rem auto;">
-                <div class="panel" style="text-align: center;">
-                    <div style="margin-bottom: 1.5rem;">
-                        <h2 style="color: var(--primary);">Мониторинг мероприятий</h2>
-                        <p style="color: var(--secondary);">Научно-методический отдел</p>
-                        <p style="font-size: 0.85rem;">Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="form-group">
-                        <label>Логин</label>
-                        <input type="text" id="login" placeholder="Введите логин (латиницей)">
-                    </div>
-                    <div class="form-group">
-                        <label>Пароль</label>
-                        <input type="password" id="password" placeholder="Введите пароль">
-                    </div>
-                    <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
-                    <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderMain() {
-        const role = currentUser.role;
-        const isAdmin = role === 'admin';
-        const isEditor = role === 'editor';
-        const isChairman = role === 'chairman';
-        
-        let navHtml = `
-            <div class="nav-buttons">
-                <button class="nav-btn ${currentModule === 'student_contests' ? 'active' : ''}" data-module="student_contests">🎓 Студенты (конкурсы)</button>
-                <button class="nav-btn ${currentModule === 'student_olympiads' ? 'active' : ''}" data-module="student_olympiads">🏅 Студенты (олимпиады)</button>
-                <button class="nav-btn ${currentModule === 'teacher_contests' ? 'active' : ''}" data-module="teacher_contests">👨‍🏫 Преподаватели (конкурсы)</button>
-                <button class="nav-btn ${currentModule === 'teacher_articles' ? 'active' : ''}" data-module="teacher_articles">📄 Преподаватели (статьи)</button>
-                ${isChairman ? `<button class="nav-btn ${currentModule === 'mycc' ? 'active' : ''}" data-module="mycc">👥 Мой ЦК</button>` : ''}
-                ${isAdmin ? `<button class="nav-btn ${currentModule === 'managecc' ? 'active' : ''}" data-module="managecc">⚙️ Управление ЦК</button>` : ''}
-            </div>
-        `;
-        
-        if (currentModule === 'student_contests') return renderStudentContests(navHtml, isAdmin, isEditor);
-        if (currentModule === 'student_olympiads') return renderStudentOlympiads(navHtml, isAdmin, isEditor);
-        if (currentModule === 'teacher_contests') return renderTeacherContests(navHtml, isAdmin, isEditor);
-        if (currentModule === 'teacher_articles') return renderTeacherArticles(navHtml, isAdmin, isEditor);
-        if (currentModule === 'mycc' && isChairman) return renderMyCC(navHtml);
-        if (currentModule === 'managecc' && isAdmin) return renderManageCC(navHtml);
-        
-        return renderStudentContests(navHtml, isAdmin, isEditor);
-    }
-
-    function renderStudentContests(navHtml, isAdmin, isEditor) {
-        const eventsForStatus = eventsData[currentStatus] || [];
-        const sortedEvents = sortByDate(eventsForStatus);
-
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let totalParticipants = 0;
-        let notesWritten = 0;
-        let notesNotWritten = 0;
-
-        for (const ev of sortedEvents) {
-            for (const p of ev.participants) {
-                totalStats[p.result] = (totalStats[p.result] || 0) + 1;
-                totalParticipants++;
-            }
-            if (ev.service_note_written) notesWritten++;
-            else notesNotWritten++;
-        }
-
-        const statsHtml = `
-            <div class="stats">
-                <div class="stats-grid">
-                    <span>📊 Участие: ${totalStats["Участие"]}</span>
-                    <span>🥇 1 место: ${totalStats["Диплом 1 место"]}</span>
-                    <span>🥈 2 место: ${totalStats["Диплом 2 место"]}</span>
-                    <span>🥉 3 место: ${totalStats["Диплом 3 место"]}</span>
-                    <span>🏆 Номинации: ${totalStats["Номинация"]}</span>
-                    <span>👥 Всего участников: ${totalParticipants}</span>
-                </div>
-                <div style="margin-top: 0.5rem;">📋 Служебные записки: ✅ написано ${notesWritten} | ❌ не написано ${notesNotWritten}</div>
-            </div>
-        `;
-
-        let itemsHtml = '';
-        for (let idx = 0; idx < sortedEvents.length; idx++) {
-            const ev = sortedEvents[idx];
-            const groups = groupParticipantsBySupervisor(ev.participants);
-            let participantsHtml = '';
-            for (const [sup, parts] of Object.entries(groups)) {
-                participantsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
-                for (const p of parts) {
-                    participantsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
-                }
-            }
-            const noteStatus = ev.service_note_written 
-                ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(ev.service_note_date)})</span>`
-                : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
-
-            itemsHtml += `
-                <div class="item-card" data-id="${ev.id}">
-                    <div class="item-header">
-                        <div class="item-number">№ ${idx+1}</div>
-                        <div class="item-actions">
-                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditEventModal(${ev.id})">✏️ Редактировать</button>` : ''}
-                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteEventById(${ev.id})">🗑 Удалить</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="item-field"><span class="item-label">Наименование мероприятия:</span> ${escapeHtml(ev.name)}</div>
-                    <div class="item-field"><span class="item-label">Статус:</span> ${ev.status}</div>
-                    <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
-                    <div class="item-field"><span class="item-label">Число участников:</span> ${ev.participants_count}</div>
-                    <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(ev.date)}</div>
-                    <div class="service-note-status"><span class="item-label">Служебная записка:</span> ${noteStatus}</div>
-                    <div class="item-field"><span class="item-label">Участники, группа:</span></div>
-                    <div class="participant-list">${participantsHtml}</div>
-                </div>
-            `;
-        }
-
-        let adminFormHtml = '';
-        if (isAdmin) {
-            adminFormHtml = `
-                <div class="panel">
-                    <div class="panel-title">➕ СОЗДАНИЕ НОВОГО МЕРОПРИЯТИЯ</div>
-                    <div class="form-group">
-                        <label>Наименование мероприятия</label>
-                        <textarea id="eventName" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус</label>
-                        <select id="eventStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
-                    </div>
-                    <div class="form-group">
-                        <label>Организаторы</label>
-                        <textarea id="eventOrganizers" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
-                        <input type="text" id="eventDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
-                    </div>
-                    
-                    <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 ДОБАВЛЕНИЕ УЧАСТНИКОВ</div>
-                    <div class="form-grid">
-                        <div class="form-group"><label>ФИО участника</label><input type="text" id="participantName"></div>
-                        <div class="form-group"><label>Группа</label><input type="text" id="participantGroup"></div>
-                        <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="participantSupervisor" placeholder="можно оставить пустым"></div>
-                        <div class="form-group"><label>Результат</label><select id="participantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button id="addParticipantBtn">➕ Добавить участника</button>
-                        <button id="clearParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
-                    </div>
-                    <div class="form-group" style="margin-top: 0.5rem;"><label>Добавленные участники:</label></div>
-                    <div id="participantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
-                    <button id="saveEventBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ МЕРОПРИЯТИЕ</button>
-                    
-                    <hr style="margin: 1rem 0;">
-                    <div class="panel-title">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</div>
-                    <button id="manageUsersBtn" class="btn-secondary">👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ</button>
-                </div>
-            `;
-        }
-
-        let editorButtons = '';
-        if (isEditor) {
-            editorButtons = `
-                <button id="markServiceNoteBtn" style="background: #28a745;">✍️ Отметить служебную записку</button>
-                <button id="generateServiceNoteBtn" style="background: #17a2b8;">📄 Сформировать служебную записку</button>
-            `;
-        }
-
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <div class="status-buttons">
-                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                    ${editorButtons}
-                    <button id="copyAllBtn">📋 Копировать всё</button>
-                    <button id="copyStatsBtn">📊 Копировать статистику</button>
-                    <button id="refreshBtn">🔄 Обновить</button>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">📋 Студенческие конкурсы (${currentStatus} уровень)</div>
-                    <div class="items-list" id="itemsList">
-                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
-                    </div>
-                    ${statsHtml}
-                </div>
-                ${adminFormHtml}
-            </div>
-        `;
-    }
-
-    function renderStudentOlympiads(navHtml, isAdmin, isEditor) {
-        const sortedOlympiads = sortByDate(studentOlympiads);
-        
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let totalParticipants = 0;
-        let notesWritten = 0;
-        let notesNotWritten = 0;
-        
-        for (const o of sortedOlympiads) {
-            for (const p of o.participants) {
-                totalStats[p.result] = (totalStats[p.result] || 0) + 1;
-                totalParticipants++;
-            }
-            if (o.service_note_written) notesWritten++;
-            else notesNotWritten++;
-        }
-        
-        const statsHtml = `
-            <div class="stats">
-                <div class="stats-grid">
-                    <span>📊 Участие: ${totalStats["Участие"]}</span>
-                    <span>🥇 1 место: ${totalStats["Диплом 1 место"]}</span>
-                    <span>🥈 2 место: ${totalStats["Диплом 2 место"]}</span>
-                    <span>🥉 3 место: ${totalStats["Диплом 3 место"]}</span>
-                    <span>🏆 Номинации: ${totalStats["Номинация"]}</span>
-                    <span>👥 Всего участников: ${totalParticipants}</span>
-                </div>
-                <div style="margin-top: 0.5rem;">📋 Служебные записки: ✅ написано ${notesWritten} | ❌ не написано ${notesNotWritten}</div>
-            </div>
-        `;
-        
-        let itemsHtml = '';
-        for (let idx = 0; idx < sortedOlympiads.length; idx++) {
-            const o = sortedOlympiads[idx];
-            const groups = groupParticipantsBySupervisor(o.participants);
-            let participantsHtml = '';
-            for (const [sup, parts] of Object.entries(groups)) {
-                participantsHtml += `<div class="participant-item"><strong>Руководитель: ${escapeHtml(sup)}</strong></div>`;
-                for (const p of parts) {
-                    participantsHtml += `<div class="participant-item">  • ${escapeHtml(p.full_name)} (гр.${escapeHtml(p.group)}) - ${p.result}</div>`;
-                }
-            }
-            const noteStatus = o.service_note_written 
-                ? `<span class="service-note-written">✅ НАПИСАНА (${formatDate(o.service_note_date)})</span>`
-                : `<span class="service-note-missing">❌ НЕ НАПИСАНА</span>`;
-            
-            itemsHtml += `
-                <div class="item-card" data-id="${o.id}">
-                    <div class="item-header">
-                        <div class="item-number">№ ${idx+1}</div>
-                        <div class="item-actions">
-                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditOlympiadModal(${o.id})">✏️ Редактировать</button>` : ''}
-                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteOlympiadById(${o.id})">🗑 Удалить</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="item-field"><span class="item-label">Наименование олимпиады:</span> ${escapeHtml(o.name)}</div>
-                    <div class="item-field"><span class="item-label">Статус:</span> ${o.status}</div>
-                    <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(o.organizers)}</div>
-                    <div class="item-field"><span class="item-label">Число участников:</span> ${o.participants.length}</div>
-                    <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(o.date)}</div>
-                    <div class="service-note-status"><span class="item-label">Служебная записка:</span> ${noteStatus}</div>
-                    <div class="item-field"><span class="item-label">Участники, группа:</span></div>
-                    <div class="participant-list">${participantsHtml}</div>
-                </div>
-            `;
-        }
-        
-        let adminFormHtml = '';
-        if (isAdmin) {
-            adminFormHtml = `
-                <div class="panel">
-                    <div class="panel-title">➕ СОЗДАНИЕ НОВОЙ ОЛИМПИАДЫ</div>
-                    <div class="form-group">
-                        <label>Наименование олимпиады</label>
-                        <textarea id="olympiadName" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус</label>
-                        <select id="olympiadStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
-                    </div>
-                    <div class="form-group">
-                        <label>Организаторы</label>
-                        <textarea id="olympiadOrganizers" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
-                        <input type="text" id="olympiadDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
-                    </div>
-                    
-                    <div class="panel-title" style="font-size: 0.9rem; margin-top: 1rem;">👥 ДОБАВЛЕНИЕ УЧАСТНИКОВ</div>
-                    <div class="form-grid">
-                        <div class="form-group"><label>ФИО участника</label><input type="text" id="olympiadParticipantName"></div>
-                        <div class="form-group"><label>Группа</label><input type="text" id="olympiadParticipantGroup"></div>
-                        <div class="form-group"><label>Руководитель(ли)</label><input type="text" id="olympiadParticipantSupervisor" placeholder="можно оставить пустым"></div>
-                        <div class="form-group"><label>Результат</label><select id="olympiadParticipantResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button id="addOlympiadParticipantBtn">➕ Добавить участника</button>
-                        <button id="clearOlympiadParticipantsBtn" class="btn-secondary">🗑 Очистить список</button>
-                    </div>
-                    <div class="form-group" style="margin-top: 0.5rem;"><label>Добавленные участники:</label></div>
-                    <div id="olympiadParticipantsList" style="border:1px solid var(--border); border-radius:8px; padding:0.5rem; min-height:80px; max-height:150px; overflow-y:auto; font-size:0.85rem;"></div>
-                    <button id="saveOlympiadBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ ОЛИМПИАДУ</button>
-                </div>
-            `;
-        }
-        
-        let editorButtons = '';
-        if (isEditor) {
-            editorButtons = `
-                <button id="markServiceNoteOlympiadBtn" style="background: #28a745;">✍️ Отметить служебную записку</button>
-            `;
-        }
-        
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <div class="status-buttons">
-                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                    ${editorButtons}
-                    <button id="copyAllBtn">📋 Копировать всё</button>
-                    <button id="copyStatsBtn">📊 Копировать статистику</button>
-                    <button id="refreshBtn">🔄 Обновить</button>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">📋 Студенческие олимпиады (${currentStatus} уровень)</div>
-                    <div class="items-list" id="itemsList">
-                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
-                    </div>
-                    ${statsHtml}
-                </div>
-                ${adminFormHtml}
-            </div>
-        `;
-    }
-
-    function renderTeacherContests(navHtml, isAdmin, isEditor) {
-        const sortedContests = sortByDate(teacherContests.filter(c => c.status === currentStatus));
-        
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        for (const c of sortedContests) {
-            totalStats[c.result] = (totalStats[c.result] || 0) + 1;
-        }
-        
-        const statsHtml = `
-            <div class="stats">
-                <div class="stats-grid">
-                    <span>📊 Участие: ${totalStats["Участие"]}</span>
-                    <span>🥇 1 место: ${totalStats["Диплом 1 место"]}</span>
-                    <span>🥈 2 место: ${totalStats["Диплом 2 место"]}</span>
-                    <span>🥉 3 место: ${totalStats["Диплом 3 место"]}</span>
-                    <span>🏆 Номинации: ${totalStats["Номинация"]}</span>
-                    <span>👥 Всего записей: ${sortedContests.length}</span>
-                </div>
-            </div>
-        `;
-        
-        let itemsHtml = '';
-        for (let idx = 0; idx < sortedContests.length; idx++) {
-            const c = sortedContests[idx];
-            itemsHtml += `
-                <div class="item-card" data-id="${c.id}">
-                    <div class="item-header">
-                        <div class="item-number">№ ${idx+1}</div>
-                        <div class="item-actions">
-                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditTeacherContestModal(${c.id})">✏️ Редактировать</button>` : ''}
-                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteTeacherContestById(${c.id})">🗑 Удалить</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="item-field"><span class="item-label">Наименование конкурса:</span> ${escapeHtml(c.name)}</div>
-                    <div class="item-field"><span class="item-label">Статус:</span> ${c.status}</div>
-                    <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(c.date)}</div>
-                    <div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(c.teacher_name)}</div>
-                    <div class="item-field"><span class="item-label">Результат:</span> ${c.result}</div>
-                </div>
-            `;
-        }
-        
-        let adminFormHtml = '';
-        if (isAdmin) {
-            adminFormHtml = `
-                <div class="panel">
-                    <div class="panel-title">➕ ДОБАВЛЕНИЕ КОНКУРСА ПРЕПОДАВАТЕЛЯ</div>
-                    <div class="form-group">
-                        <label>Наименование конкурса</label>
-                        <textarea id="contestName" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус</label>
-                        <select id="contestStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата проведения (ДД.ММ.ГГГГ)</label>
-                        <input type="text" id="contestDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
-                    </div>
-                    <div class="form-group">
-                        <label>ФИО преподавателя</label>
-                        <input type="text" id="contestTeacherName">
-                    </div>
-                    <div class="form-group">
-                        <label>Результат</label>
-                        <select id="contestResult">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select>
-                    </div>
-                    <button id="saveContestBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ КОНКУРС</button>
-                </div>
-            `;
-        }
-        
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <div class="status-buttons">
-                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                    <button id="copyAllBtn">📋 Копировать всё</button>
-                    <button id="copyStatsBtn">📊 Копировать статистику</button>
-                    <button id="refreshBtn">🔄 Обновить</button>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">📋 Конкурсы преподавателей (${currentStatus} уровень)</div>
-                    <div class="items-list" id="itemsList">
-                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
-                    </div>
-                    ${statsHtml}
-                </div>
-                ${adminFormHtml}
-            </div>
-        `;
-    }
-
-    function renderTeacherArticles(navHtml, isAdmin, isEditor) {
-        const sortedArticles = sortByDate(teacherArticles.filter(a => a.status === currentStatus));
-        
-        const statsHtml = `
-            <div class="stats">
-                <div class="stats-grid">
-                    <span>📄 Всего статей: ${sortedArticles.length}</span>
-                </div>
-            </div>
-        `;
-        
-        let itemsHtml = '';
-        for (let idx = 0; idx < sortedArticles.length; idx++) {
-            const a = sortedArticles[idx];
-            itemsHtml += `
-                <div class="item-card" data-id="${a.id}">
-                    <div class="item-header">
-                        <div class="item-number">№ ${idx+1}</div>
-                        <div class="item-actions">
-                            ${isAdmin ? `<button class="btn-edit" onclick="window.openEditTeacherArticleModal(${a.id})">✏️ Редактировать</button>` : ''}
-                            ${isAdmin ? `<button class="btn-delete" onclick="window.deleteTeacherArticleById(${a.id})">🗑 Удалить</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="item-field"><span class="item-label">Название статьи:</span> ${escapeHtml(a.name)}</div>
-                    <div class="item-field"><span class="item-label">Статус:</span> ${a.status}</div>
-                    <div class="item-field"><span class="item-label">Дата публикации:</span> ${formatDate(a.date)}</div>
-                    <div class="item-field"><span class="item-label">Преподаватель:</span> ${escapeHtml(a.teacher_name)}</div>
-                </div>
-            `;
-        }
-        
-        let adminFormHtml = '';
-        if (isAdmin) {
-            adminFormHtml = `
-                <div class="panel">
-                    <div class="panel-title">➕ ДОБАВЛЕНИЕ СТАТЬИ ПРЕПОДАВАТЕЛЯ</div>
-                    <div class="form-group">
-                        <label>Название статьи</label>
-                        <textarea id="articleName" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус</label>
-                        <select id="articleStatus">${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата публикации (ДД.ММ.ГГГГ)</label>
-                        <input type="text" id="articleDate" placeholder="ДД.ММ.ГГГГ" value="${new Date().toLocaleDateString('ru-RU')}">
-                    </div>
-                    <div class="form-group">
-                        <label>ФИО преподавателя</label>
-                        <input type="text" id="articleTeacherName">
-                    </div>
-                    <button id="saveArticleBtn" style="margin-top: 1rem; width:100%;">💾 СОХРАНИТЬ СТАТЬЮ</button>
-                </div>
-            `;
-        }
-        
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">${isAdmin ? 'Администратор' : (isEditor ? 'Методист' : (isChairman ? 'Председатель ЦК' : 'Просмотр'))}</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <div class="status-buttons">
-                    ${STATUSES.map(s => `<button class="status-btn ${currentStatus === s ? 'active' : ''}" data-status="${s}">${s}</button>`).join('')}
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                    <button id="copyAllBtn">📋 Копировать всё</button>
-                    <button id="copyStatsBtn">📊 Копировать статистику</button>
-                    <button id="refreshBtn">🔄 Обновить</button>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">📋 Статьи преподавателей (${currentStatus} уровень)</div>
-                    <div class="items-list" id="itemsList">
-                        ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
-                    </div>
-                    ${statsHtml}
-                </div>
-                ${adminFormHtml}
-            </div>
-        `;
-    }
-
-    function renderMyCC(navHtml) {
-        if (!selectedTeacher) {
-            return `
-                <div class="header">
-                    <div class="header-content">
-                        <div class="logo">
-                            <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                            <p>Альметьевский политехнический техникум</p>
-                        </div>
-                        <div class="user-info">
-                            <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                            <div class="user-role">Председатель ЦК</div>
-                            <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="main-content">
-                    ${navHtml}
-                    <div class="panel">
-                        <div class="panel-title">👥 Преподаватели ЦК</div>
-                        <div class="teachers-list" id="teachersList"></div>
-                    </div>
-                </div>
-            `;
-        } else {
-            return renderTeacherProfile(navHtml);
-        }
-    }
-
-    function renderTeacherProfile(navHtml) {
-        const { stats: studentStats, total: studentTotal } = getTeacherStats(teacherEvents);
-        
-        const personalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        for (const a of teacherAchievements) {
-            personalStats[a.result] = (personalStats[a.result] || 0) + 1;
-        }
-        
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">Председатель ЦК</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <button class="nav-btn" onclick="window.backToTeachers()" style="margin-bottom: 1rem;">← Назад к списку преподавателей</button>
-                
-                <div class="panel">
-                    <div class="panel-title">👩‍🏫 ${escapeHtml(selectedTeacher.teacher_name)}</div>
-                    
-                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📊 Статистика по студентам (мониторинг)</div>
-                    <div class="stats-grid" style="margin-bottom: 1rem;">
-                        <span>📊 Участие: ${studentStats["Участие"]}</span>
-                        <span>🥇 1 место: ${studentStats["Диплом 1 место"]}</span>
-                        <span>🥈 2 место: ${studentStats["Диплом 2 место"]}</span>
-                        <span>🥉 3 место: ${studentStats["Диплом 3 место"]}</span>
-                        <span>🏆 Номинации: ${studentStats["Номинация"]}</span>
-                        <span>👥 Всего участников: ${studentTotal}</span>
-                    </div>
-                    
-                    <div class="panel-title" style="font-size: 1rem;">🏆 Достижения со студентами (по уровням)</div>
-                    ${STATUSES.map(status => {
-                        const events = teacherEvents.filter(e => e.status === status);
-                        if (events.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
-                        return `
-                            <div style="margin: 0.5rem 0;">
-                                <strong>${status}:</strong>
-                                ${events.map(e => `
-                                    <div class="event-item">
-                                        <strong>${escapeHtml(e.name)}</strong> (${formatDate(e.date)})<br>
-                                        <span style="font-size: 0.8rem;">Участники: ${e.participants.map(p => `${p.full_name} (${p.result})`).join(', ')}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-                    }).join('')}
-                    
-                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">🏅 Личные достижения преподавателя (конкурсы)</div>
-                    <div class="stats-grid" style="margin-bottom: 1rem;">
-                        <span>📊 Участие: ${personalStats["Участие"]}</span>
-                        <span>🥇 1 место: ${personalStats["Диплом 1 место"]}</span>
-                        <span>🥈 2 место: ${personalStats["Диплом 2 место"]}</span>
-                        <span>🥉 3 место: ${personalStats["Диплом 3 место"]}</span>
-                        <span>🏆 Номинации: ${personalStats["Номинация"]}</span>
-                        <span>👥 Всего конкурсов: ${teacherAchievements.length}</span>
-                    </div>
-                    ${STATUSES.map(status => {
-                        const achievements = teacherAchievements.filter(a => a.status === status);
-                        if (achievements.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
-                        return `
-                            <div style="margin: 0.5rem 0;">
-                                <strong>${status}:</strong>
-                                ${achievements.map(a => `
-                                    <div class="achievement-item">
-                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)}) - ${a.result}
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-                    }).join('')}
-                    
-                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📄 Статьи преподавателя</div>
-                    <div class="stats-grid" style="margin-bottom: 1rem;">
-                        <span>📄 Всего статей: ${teacherPersonalArticles.length}</span>
-                    </div>
-                    ${STATUSES.map(status => {
-                        const articles = teacherPersonalArticles.filter(a => a.status === status);
-                        if (articles.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
-                        return `
-                            <div style="margin: 0.5rem 0;">
-                                <strong>${status}:</strong>
-                                ${articles.map(a => `
-                                    <div class="article-item">
-                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)})
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-                    }).join('')}
-                    
-                    <div class="cc-stats">
-                        <strong>Итоговая статистика:</strong><br>
-                        Всего призовых мест со студентами: ${Object.values(studentStats).reduce((a,b) => a+b, 0) - studentStats["Участие"]}<br>
-                        Всего личных достижений (конкурсы): ${teacherAchievements.length}<br>
-                        Всего статей: ${teacherPersonalArticles.length}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderManageCC(navHtml) {
-        return `
-            <div class="header">
-                <div class="header-content">
-                    <div class="logo">
-                        <h1>МОНИТОРИНГ МЕРОПРИЯТИЙ 2025-2026</h1>
-                        <p>Альметьевский политехнический техникум</p>
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(currentUser.name)}</div>
-                        <div class="user-role">Администратор</div>
-                        <button class="btn-logout" id="logoutBtn">🚪 ВЫЙТИ</button>
-                    </div>
-                </div>
-            </div>
-            <div class="main-content">
-                ${navHtml}
-                <div class="panel">
-                    <div class="panel-title">👥 Управление ЦК</div>
-                    <div class="form-group">
-                        <label>Выберите ЦК</label>
-                        <select id="ccSelect" style="margin-bottom: 1rem;">
-                            <option value="">-- Выберите ЦК --</option>
-                            ${commissions.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div id="ccTeachersPanel"></div>
-                    <button id="addTeacherBtn" style="margin-top: 1rem;">➕ Добавить преподавателя</button>
-                    <hr style="margin: 1rem 0;">
-                    <div class="panel-title" style="font-size: 1rem;">➕ Добавить новый ЦК</div>
-                    <div class="form-group">
-                        <label>Название ЦК</label>
-                        <input type="text" id="newCCName">
-                    </div>
-                    <div class="form-group">
-                        <label>Логин председателя (опционально)</label>
-                        <input type="text" id="newCCChairmanLogin">
-                    </div>
-                    <div class="form-group">
-                        <label>Имя председателя (опционально)</label>
-                        <input type="text" id="newCCChairmanName">
-                    </div>
-                    <button id="addCCBtn">➕ Добавить ЦК</button>
-                </div>
-            </div>
-        `;
-    }
-
-    window.backToTeachers = function() {
-        selectedTeacher = null;
-        render();
+// ========== ФУНКЦИИ РЕДАКТИРОВАНИЯ ==========
+window.openEditEventModal = async function(eventId) {
+    let event = null; for (const s of STATUSES) { event = eventsData[s]?.find(e => e.id === eventId); if (event) break; }
+    if (!event) return;
+    const modal = document.createElement('div'); modal.className = 'modal'; modal.style.display = 'flex';
+    modal.innerHTML = `<div class="modal-content"><div class="modal-header"><h3>✏️ Редактирование мероприятия</h3><span class="close-modal">&times;</span></div>
+        <div class="form-group"><label>Наименование</label><textarea id="editEventName" rows="2">${escapeHtml(event.name)}</textarea></div>
+        <div class="form-group"><label>Статус</label><select id="editEventStatus">${STATUSES.map(s => `<option value="${s}" ${event.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Организаторы</label><textarea id="editEventOrganizers" rows="2">${escapeHtml(event.organizers)}</textarea></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="editEventDate" value="${formatDate(event.date)}"></div>
+        <div class="panel-title">👥 УЧАСТНИКИ</div><div id="editParticipantsList">${event.participants.map((p, idx) => `<div class="participant-row"><input type="text" class="edit-name" value="${escapeHtml(p.full_name)}" placeholder="ФИО"><input type="text" class="edit-group" value="${escapeHtml(p.group)}" placeholder="Группа"><input type="text" class="edit-supervisor" value="${escapeHtml(p.supervisor)}" placeholder="Руководитель"><select class="edit-result">${RESULTS.map(r => `<option value="${r}" ${p.result === r ? 'selected' : ''}>${r}</option>`).join('')}</select><button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button></div>`).join('')}</div>
+        <button id="addEditParticipantBtn">➕ Добавить участника</button><div style="display:flex;gap:0.5rem;margin-top:1rem;"><button id="saveEditEventBtn" style="background:#28a745;">💾 СОХРАНИТЬ</button><button id="cancelEditBtn" class="btn-secondary">❌ ОТМЕНА</button></div></div>`;
+    document.body.appendChild(modal);
+    document.querySelector('.close-modal').onclick = () => modal.remove();
+    document.getElementById('addEditParticipantBtn').onclick = () => { const container = document.getElementById('editParticipantsList'); const div = document.createElement('div'); div.className = 'participant-row'; div.innerHTML = `<input type="text" class="edit-name" placeholder="ФИО"><input type="text" class="edit-group" placeholder="Группа"><input type="text" class="edit-supervisor" placeholder="Руководитель"><select class="edit-result">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select><button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button>`; container.appendChild(div); };
+    document.getElementById('saveEditEventBtn').onclick = async () => {
+        const updated = { eventId, name: document.getElementById('editEventName').value.trim(), status: document.getElementById('editEventStatus').value, organizers: document.getElementById('editEventOrganizers').value.trim() || 'Не указаны', date: document.getElementById('editEventDate').value.trim(), participants: [] };
+        document.querySelectorAll('.participant-row').forEach(row => { const name = row.querySelector('.edit-name')?.value.trim(), group = row.querySelector('.edit-group')?.value.trim(), sup = row.querySelector('.edit-supervisor')?.value.trim() || '—', res = row.querySelector('.edit-result')?.value; if (name && group) updated.participants.push({ full_name: name, group, supervisor: sup, result: res }); });
+        if (!updated.participants.length) { alert('Добавьте участников!'); return; }
+        if (await updateEventOnServer(updated)) { eventsData = await loadEvents(); render(); modal.remove(); alert('Обновлено!'); } else alert('Ошибка!');
     };
+    document.getElementById('cancelEditBtn').onclick = () => modal.remove();
+};
 
-    window.selectTeacher = async function(id, name) {
-        const teacher = ccTeachers.find(t => t.id === id);
-        if (!teacher) return;
-        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
-        await loadTeacherEvents(teacher.teacher_name);
-        await loadTeacherAchievements(teacher.id);
-        teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === teacher.teacher_name);
-        render();
+window.deleteEventById = async function(eventId) {
+    let event = null; for (const s of STATUSES) { event = eventsData[s]?.find(e => e.id === eventId); if (event) break; }
+    if (!event) return;
+    const pwd = prompt(`Удаление: ${event.name}\nВведите пароль администратора:`);
+    if (!pwd) return;
+    const users = await loadUsers();
+    if (users['muhanov']?.password === pwd && confirm('Удалить?')) { if (await deleteEventOnServer(eventId)) { eventsData = await loadEvents(); render(); alert('Удалено!'); } else alert('Ошибка!'); }
+    else alert('Неверный пароль!');
+};
+
+window.openEditOlympiadModal = async function(id) {
+    const o = studentOlympiads.find(o => o.id === id);
+    if (!o) return;
+    const modal = document.createElement('div'); modal.className = 'modal'; modal.style.display = 'flex';
+    modal.innerHTML = `<div class="modal-content"><div class="modal-header"><h3>✏️ Редактирование олимпиады</h3><span class="close-modal">&times;</span></div>
+        <div class="form-group"><label>Наименование</label><textarea id="editOlympiadName" rows="2">${escapeHtml(o.name)}</textarea></div>
+        <div class="form-group"><label>Статус</label><select id="editOlympiadStatus">${STATUSES.map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Организаторы</label><textarea id="editOlympiadOrganizers" rows="2">${escapeHtml(o.organizers)}</textarea></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="editOlympiadDate" value="${formatDate(o.date)}"></div>
+        <div class="panel-title">👥 УЧАСТНИКИ</div><div id="editOlympiadParticipantsList">${o.participants.map((p, idx) => `<div class="participant-row"><input type="text" class="edit-name" value="${escapeHtml(p.full_name)}" placeholder="ФИО"><input type="text" class="edit-group" value="${escapeHtml(p.group)}" placeholder="Группа"><input type="text" class="edit-supervisor" value="${escapeHtml(p.supervisor)}" placeholder="Руководитель"><select class="edit-result">${RESULTS.map(r => `<option value="${r}" ${p.result === r ? 'selected' : ''}>${r}</option>`).join('')}</select><button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button></div>`).join('')}</div>
+        <button id="addEditOlympiadParticipantBtn">➕ Добавить участника</button><div style="display:flex;gap:0.5rem;margin-top:1rem;"><button id="saveEditOlympiadBtn" style="background:#28a745;">💾 СОХРАНИТЬ</button><button id="cancelEditOlympiadBtn" class="btn-secondary">❌ ОТМЕНА</button></div></div>`;
+    document.body.appendChild(modal);
+    document.querySelector('.close-modal').onclick = () => modal.remove();
+    document.getElementById('addEditOlympiadParticipantBtn').onclick = () => { const container = document.getElementById('editOlympiadParticipantsList'); const div = document.createElement('div'); div.className = 'participant-row'; div.innerHTML = `<input type="text" class="edit-name" placeholder="ФИО"><input type="text" class="edit-group" placeholder="Группа"><input type="text" class="edit-supervisor" placeholder="Руководитель"><select class="edit-result">${RESULTS.map(r => `<option value="${r}">${r}</option>`).join('')}</select><button class="delete-participant-btn" onclick="this.closest('.participant-row').remove()">🗑</button>`; container.appendChild(div); };
+    document.getElementById('saveEditOlympiadBtn').onclick = async () => {
+        const updated = { id, name: document.getElementById('editOlympiadName').value.trim(), status: document.getElementById('editOlympiadStatus').value, organizers: document.getElementById('editOlympiadOrganizers').value.trim() || 'Не указаны', date: document.getElementById('editOlympiadDate').value.trim(), participants: [] };
+        document.querySelectorAll('#editOlympiadParticipantsList .participant-row').forEach(row => { const name = row.querySelector('.edit-name')?.value.trim(), group = row.querySelector('.edit-group')?.value.trim(), sup = row.querySelector('.edit-supervisor')?.value.trim() || '—', res = row.querySelector('.edit-result')?.value; if (name && group) updated.participants.push({ full_name: name, group, supervisor: sup, result: res }); });
+        if (!updated.participants.length) { alert('Добавьте участников!'); return; }
+        if (await updateStudentOlympiadOnServer(updated)) { studentOlympiads = await loadStudentOlympiads(); render(); modal.remove(); alert('Обновлено!'); } else alert('Ошибка!');
     };
+    document.getElementById('cancelEditOlympiadBtn').onclick = () => modal.remove();
+};
 
-    // Вспомогательные функции (заглушки для редактирования)
-    window.openEditEventModal = async function(eventId) { alert("Функция редактирования мероприятия"); };
-    window.deleteEventById = async function(eventId) { alert("Функция удаления мероприятия"); };
-    window.openEditOlympiadModal = async function(olympiadId) { alert("Функция редактирования олимпиады"); };
-    window.deleteOlympiadById = async function(id) { alert("Функция удаления олимпиады"); };
-    window.openEditTeacherContestModal = async function(id) { alert("Функция редактирования конкурса"); };
-    window.deleteTeacherContestById = async function(id) { alert("Функция удаления конкурса"); };
-    window.openEditTeacherArticleModal = async function(id) { alert("Функция редактирования статьи"); };
-    window.deleteTeacherArticleById = async function(id) { alert("Функция удаления статьи"); };
+window.deleteOlympiadById = async function(id) {
+    const o = studentOlympiads.find(o => o.id === id);
+    if (!o) return;
+    const pwd = prompt(`Удаление: ${o.name}\nВведите пароль администратора:`);
+    if (!pwd) return;
+    const users = await loadUsers();
+    if (users['muhanov']?.password === pwd && confirm('Удалить?')) { if (await deleteStudentOlympiadOnServer(id)) { studentOlympiads = await loadStudentOlympiads(); render(); alert('Удалено!'); } else alert('Ошибка!'); }
+    else alert('Неверный пароль!');
+};
 
-    function attachLoginEvents() {
-        document.getElementById('loginBtn')?.addEventListener('click', async () => {
-            const login = document.getElementById('login').value.trim().toLowerCase();
-            const password = document.getElementById('password').value.trim();
-            
-            console.log("Попытка входа:", login);
-            
-            const users = await loadUsers();
-            console.log("Загружено пользователей:", Object.keys(users));
-            
-            if (users[login] && users[login].password === password) {
-                console.log("Успешный вход для:", login);
-                currentUser = { ...users[login], username: login };
-                eventsData = await loadEvents();
-                studentOlympiads = await loadStudentOlympiads();
-                teacherContests = await loadTeacherContests();
-                teacherArticles = await loadTeacherArticles();
-                await loadCommissions();
-                if (currentUser.role === 'chairman' && currentUser.cc_id) {
-                    await loadCCTeachers(currentUser.cc_id);
-                }
-                render();
-            } else {
-                if (!users[login]) {
-                    alert(`❌ Пользователь "${login}" не найден в базе данных!\n\nДоступные логины: ${Object.keys(users).join(", ")}`);
-                } else {
-                    alert("❌ Неверный пароль!");
-                }
-            }
-        });
-    }
+window.openEditTeacherContestModal = async function(id) {
+    const c = teacherContests.find(c => c.id === id);
+    if (!c) return;
+    const modal = document.createElement('div'); modal.className = 'modal'; modal.style.display = 'flex';
+    modal.innerHTML = `<div class="modal-content"><div class="modal-header"><h3>✏️ Редактирование конкурса</h3><span class="close-modal">&times;</span></div>
+        <div class="form-group"><label>Наименование</label><textarea id="editContestName" rows="2">${escapeHtml(c.name)}</textarea></div>
+        <div class="form-group"><label>Статус</label><select id="editContestStatus">${STATUSES.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="editContestDate" value="${formatDate(c.date)}"></div>
+        <div class="form-group"><label>Преподаватель</label><input type="text" id="editContestTeacherName" value="${escapeHtml(c.teacher_name)}"></div>
+        <div class="form-group"><label>Результат</label><select id="editContestResult">${RESULTS.map(r => `<option value="${r}" ${c.result === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+        <div style="display:flex;gap:0.5rem;"><button id="saveEditContestBtn" style="background:#28a745;">💾 СОХРАНИТЬ</button><button id="cancelEditContestBtn" class="btn-secondary">❌ ОТМЕНА</button></div></div>`;
+    document.body.appendChild(modal);
+    document.querySelector('.close-modal').onclick = () => modal.remove();
+    document.getElementById('saveEditContestBtn').onclick = async () => {
+        const updated = { id, name: document.getElementById('editContestName').value.trim(), status: document.getElementById('editContestStatus').value, date: document.getElementById('editContestDate').value.trim(), teacher_name: document.getElementById('editContestTeacherName').value.trim(), result: document.getElementById('editContestResult').value };
+        if (await updateTeacherContestOnServer(updated)) { teacherContests = await loadTeacherContests(); render(); modal.remove(); alert('Обновлено!'); } else alert('Ошибка!');
+    };
+    document.getElementById('cancelEditContestBtn').onclick = () => modal.remove();
+};
 
-    function attachMainEvents() {
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                currentModule = btn.dataset.module;
-                selectedTeacher = null;
-                render();
-            });
-        });
-        
-        document.querySelectorAll('.status-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                currentStatus = btn.dataset.status;
-                render();
-            });
-        });
-        
-        const manageUsersBtn = document.getElementById('manageUsersBtn');
-        if (manageUsersBtn) {
-            manageUsersBtn.addEventListener('click', () => openUserManagement());
-        }
-        
-        document.getElementById('logoutBtn')?.addEventListener('click', () => {
-            currentUser = null;
-            selectedTeacher = null;
+window.deleteTeacherContestById = async function(id) {
+    const c = teacherContests.find(c => c.id === id);
+    if (!c) return;
+    const pwd = prompt(`Удаление: ${c.name}\nВведите пароль администратора:`);
+    if (!pwd) return;
+    const users = await loadUsers();
+    if (users['muhanov']?.password === pwd && confirm('Удалить?')) { if (await deleteTeacherContestOnServer(id)) { teacherContests = await loadTeacherContests(); render(); alert('Удалено!'); } else alert('Ошибка!'); }
+    else alert('Неверный пароль!');
+};
+
+window.openEditTeacherArticleModal = async function(id) {
+    const a = teacherArticles.find(a => a.id === id);
+    if (!a) return;
+    const modal = document.createElement('div'); modal.className = 'modal'; modal.style.display = 'flex';
+    modal.innerHTML = `<div class="modal-content"><div class="modal-header"><h3>✏️ Редактирование статьи</h3><span class="close-modal">&times;</span></div>
+        <div class="form-group"><label>Название</label><textarea id="editArticleName" rows="2">${escapeHtml(a.name)}</textarea></div>
+        <div class="form-group"><label>Статус</label><select id="editArticleStatus">${STATUSES.map(s => `<option value="${s}" ${a.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Дата</label><input type="text" id="editArticleDate" value="${formatDate(a.date)}"></div>
+        <div class="form-group"><label>Преподаватель</label><input type="text" id="editArticleTeacherName" value="${escapeHtml(a.teacher_name)}"></div>
+        <div style="display:flex;gap:0.5rem;"><button id="saveEditArticleBtn" style="background:#28a745;">💾 СОХРАНИТЬ</button><button id="cancelEditArticleBtn" class="btn-secondary">❌ ОТМЕНА</button></div></div>`;
+    document.body.appendChild(modal);
+    document.querySelector('.close-modal').onclick = () => modal.remove();
+    document.getElementById('saveEditArticleBtn').onclick = async () => {
+        const updated = { id, name: document.getElementById('editArticleName').value.trim(), status: document.getElementById('editArticleStatus').value, date: document.getElementById('editArticleDate').value.trim(), teacher_name: document.getElementById('editArticleTeacherName').value.trim() };
+        if (await updateTeacherArticleOnServer(updated)) { teacherArticles = await loadTeacherArticles(); render(); modal.remove(); alert('Обновлено!'); } else alert('Ошибка!');
+    };
+    document.getElementById('cancelEditArticleBtn').onclick = () => modal.remove();
+};
+
+window.deleteTeacherArticleById = async function(id) {
+    const a = teacherArticles.find(a => a.id === id);
+    if (!a) return;
+    const pwd = prompt(`Удаление: ${a.name}\nВведите пароль администратора:`);
+    if (!pwd) return;
+    const users = await loadUsers();
+    if (users['muhanov']?.password === pwd && confirm('Удалить?')) { if (await deleteTeacherArticleOnServer(id)) { teacherArticles = await loadTeacherArticles(); render(); alert('Удалено!'); } else alert('Ошибка!'); }
+    else alert('Неверный пароль!');
+};
+
+// ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
+function attachLoginEvents() {
+    document.getElementById('loginBtn').onclick = async () => {
+        const login = document.getElementById('login').value.trim().toLowerCase();
+        const password = document.getElementById('password').value.trim();
+        const users = await loadUsers();
+        if (users[login] && users[login].password === password) {
+            currentUser = { ...users[login], username: login };
+            eventsData = await loadEvents();
+            studentOlympiads = await loadStudentOlympiads();
+            teacherContests = await loadTeacherContests();
+            teacherArticles = await loadTeacherArticles();
+            await loadCommissions();
+            if (currentUser.role === 'chairman' && currentUser.cc_id) await loadCCTeachers(currentUser.cc_id);
             render();
-        });
-        
-        document.getElementById('copyAllBtn')?.addEventListener('click', () => copyAllText());
-        document.getElementById('copyStatsBtn')?.addEventListener('click', () => copyStats());
-        document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-            if (currentModule === 'student_contests') eventsData = await loadEvents();
-            if (currentModule === 'student_olympiads') studentOlympiads = await loadStudentOlympiads();
-            if (currentModule === 'teacher_contests') teacherContests = await loadTeacherContests();
-            if (currentModule === 'teacher_articles') teacherArticles = await loadTeacherArticles();
-            render();
-        });
-        
-        if (currentUser?.role === 'editor') {
-            document.getElementById('markServiceNoteBtn')?.addEventListener('click', () => openMarkNoteWindow());
-            document.getElementById('generateServiceNoteBtn')?.addEventListener('click', () => openMultiGenerateNoteWindow());
-            document.getElementById('markServiceNoteOlympiadBtn')?.addEventListener('click', () => openMarkOlympiadNoteWindow());
-        }
-        
-        // Административные обработчики
-        if (currentUser?.role === 'admin') {
-            let olympiadParticipants = [];
-            
-            function updateParticipantsList() {
-                const container = document.getElementById('participantsList');
-                if (!container) return;
-                if (pendingParticipants.length === 0) {
-                    container.innerHTML = '<div style="color: gray;">Список пуст</div>';
-                    return;
-                }
-                let html = '';
-                const groups = {};
-                for (const p of pendingParticipants) {
-                    const sup = p.supervisor;
-                    if (!groups[sup]) groups[sup] = [];
-                    groups[sup].push(p);
-                }
-                for (const [sup, parts] of Object.entries(groups)) {
-                    html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
-                    for (let i=0; i<parts.length; i++) {
-                        html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
-                    }
-                    html += '<div style="margin-bottom: 0.5rem;"></div>';
-                }
-                container.innerHTML = html;
-            }
-            
-            function updateOlympiadParticipantsList() {
-                const container = document.getElementById('olympiadParticipantsList');
-                if (!container) return;
-                if (olympiadParticipants.length === 0) {
-                    container.innerHTML = '<div style="color: gray;">Список пуст</div>';
-                    return;
-                }
-                let html = '';
-                const groups = {};
-                for (const p of olympiadParticipants) {
-                    const sup = p.supervisor;
-                    if (!groups[sup]) groups[sup] = [];
-                    groups[sup].push(p);
-                }
-                for (const [sup, parts] of Object.entries(groups)) {
-                    html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`;
-                    for (let i=0; i<parts.length; i++) {
-                        html += `<div style="margin-left: 1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`;
-                    }
-                    html += '<div style="margin-bottom: 0.5rem;"></div>';
-                }
-                container.innerHTML = html;
-            }
-            
-            document.getElementById('addParticipantBtn')?.addEventListener('click', () => {
-                const name = document.getElementById('participantName').value.trim();
-                const group = document.getElementById('participantGroup').value.trim();
-                let supervisor = document.getElementById('participantSupervisor').value.trim();
-                const result = document.getElementById('participantResult').value;
-                if (!name || !group) { alert('Заполните ФИО и группу!'); return; }
-                if (!supervisor) supervisor = '—';
-                pendingParticipants.push({ full_name: name, group, supervisor, result });
-                updateParticipantsList();
-                document.getElementById('participantName').value = '';
-                document.getElementById('participantGroup').value = '';
-                document.getElementById('participantSupervisor').value = '';
-            });
-            
-            document.getElementById('clearParticipantsBtn')?.addEventListener('click', () => {
-                pendingParticipants = [];
-                updateParticipantsList();
-            });
-            
-            document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
-                const name = document.getElementById('eventName').value.trim();
-                const status = document.getElementById('eventStatus').value;
-                const organizers = document.getElementById('eventOrganizers').value.trim() || 'Не указаны';
-                const date = document.getElementById('eventDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                if (!name) { alert('Введите название мероприятия!'); return; }
-                if (pendingParticipants.length === 0) { alert('Добавьте хотя бы одного участника!'); return; }
-                const result = await saveEventToServer({ name, status, organizers, date, participants: pendingParticipants });
-                if (result) {
-                    pendingParticipants = [];
-                    document.getElementById('eventName').value = '';
-                    document.getElementById('eventOrganizers').value = '';
-                    document.getElementById('eventDate').value = '';
-                    updateParticipantsList();
-                    eventsData = await loadEvents();
-                    render();
-                    alert('Мероприятие сохранено!');
-                } else { alert('Ошибка сохранения!'); }
-            });
-            
-            document.getElementById('addOlympiadParticipantBtn')?.addEventListener('click', () => {
-                const name = document.getElementById('olympiadParticipantName').value.trim();
-                const group = document.getElementById('olympiadParticipantGroup').value.trim();
-                let supervisor = document.getElementById('olympiadParticipantSupervisor').value.trim();
-                const result = document.getElementById('olympiadParticipantResult').value;
-                if (!name || !group) { alert('Заполните ФИО и группу!'); return; }
-                if (!supervisor) supervisor = '—';
-                olympiadParticipants.push({ full_name: name, group, supervisor, result });
-                updateOlympiadParticipantsList();
-                document.getElementById('olympiadParticipantName').value = '';
-                document.getElementById('olympiadParticipantGroup').value = '';
-                document.getElementById('olympiadParticipantSupervisor').value = '';
-            });
-            
-            document.getElementById('clearOlympiadParticipantsBtn')?.addEventListener('click', () => {
-                olympiadParticipants = [];
-                updateOlympiadParticipantsList();
-            });
-            
-            document.getElementById('saveOlympiadBtn')?.addEventListener('click', async () => {
-                const name = document.getElementById('olympiadName').value.trim();
-                const status = document.getElementById('olympiadStatus').value;
-                const organizers = document.getElementById('olympiadOrganizers').value.trim() || 'Не указаны';
-                const date = document.getElementById('olympiadDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                if (!name) { alert('Введите название олимпиады!'); return; }
-                if (olympiadParticipants.length === 0) { alert('Добавьте хотя бы одного участника!'); return; }
-                const result = await saveStudentOlympiadToServer({ name, status, organizers, date, participants: olympiadParticipants });
-                if (result) {
-                    olympiadParticipants = [];
-                    document.getElementById('olympiadName').value = '';
-                    document.getElementById('olympiadOrganizers').value = '';
-                    document.getElementById('olympiadDate').value = '';
-                    updateOlympiadParticipantsList();
-                    studentOlympiads = await loadStudentOlympiads();
-                    render();
-                    alert('Олимпиада сохранена!');
-                } else { alert('Ошибка сохранения!'); }
-            });
-            
-            document.getElementById('saveContestBtn')?.addEventListener('click', async () => {
-                const name = document.getElementById('contestName').value.trim();
-                const status = document.getElementById('contestStatus').value;
-                const date = document.getElementById('contestDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                const teacher_name = document.getElementById('contestTeacherName').value.trim();
-                const result = document.getElementById('contestResult').value;
-                if (!name || !teacher_name) { alert('Заполните название и ФИО преподавателя!'); return; }
-                const res = await saveTeacherContestToServer({ name, status, date, teacher_name, result });
-                if (res) {
-                    teacherContests = await loadTeacherContests();
-                    render();
-                    alert('Конкурс сохранен!');
-                } else { alert('Ошибка сохранения!'); }
-            });
-            
-            document.getElementById('saveArticleBtn')?.addEventListener('click', async () => {
-                const name = document.getElementById('articleName').value.trim();
-                const status = document.getElementById('articleStatus').value;
-                const date = document.getElementById('articleDate').value.trim() || new Date().toLocaleDateString('ru-RU');
-                const teacher_name = document.getElementById('articleTeacherName').value.trim();
-                if (!name || !teacher_name) { alert('Заполните название и ФИО преподавателя!'); return; }
-                const res = await saveTeacherArticleToServer({ name, status, date, teacher_name });
-                if (res) {
-                    teacherArticles = await loadTeacherArticles();
-                    render();
-                    alert('Статья сохранена!');
-                } else { alert('Ошибка сохранения!'); }
-            });
-        }
-    }
-
-    async function loadTeachersForCC(ccId) {
-        const teachers = await loadCCTeachers(ccId);
-        const container = document.getElementById('ccTeachersPanel');
-        if (!container) return;
-        
-        if (teachers.length === 0) {
-            container.innerHTML = '<div style="color: gray;">Нет преподавателей в этом ЦК</div>';
-            return;
-        }
-        
-        let html = '<div class="teachers-list">';
-        for (const t of teachers) {
-            html += `
-                <div class="teacher-card" data-id="${t.id}">
-                    <div class="teacher-name">${escapeHtml(t.teacher_name)}</div>
-                    <div style="font-size: 0.8rem; color: var(--secondary);">ID: ${t.id} | Активен: ${t.active ? 'Да' : 'Нет'}</div>
-                    <div style="margin-top: 0.5rem;">
-                        <button class="btn-edit" onclick="editTeacher(${t.id}, '${escapeHtml(t.teacher_name)}', ${t.cc_id}, ${t.active})">✏️ Редактировать</button>
-                        <button class="btn-delete" onclick="deleteTeacher(${t.id})">🗑 Удалить</button>
-                        <button class="btn-secondary" onclick="viewTeacherAchievements(${t.id}, '${escapeHtml(t.teacher_name)}')">📊 Достижения</button>
-                    </div>
-                </div>
-            `;
-        }
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    window.editTeacher = function(id, name, ccId, active) {
-        const newName = prompt("Введите новое имя преподавателя:", name);
-        if (!newName) return;
-        const newActive = confirm("Активен ли преподаватель? Нажмите OK если Да, Отмена если Нет");
-        
-        updateCCTeacherOnServer({ id, teacher_name: newName, cc_id: ccId, active: newActive }).then(() => {
-            const select = document.getElementById('ccSelect');
-            if (select && select.value) {
-                loadTeachersForCC(parseInt(select.value));
-            }
-            alert("Преподаватель обновлён!");
-        });
+        } else alert('Неверный логин или пароль!');
     };
+}
 
-    window.deleteTeacher = function(id) {
-        if (confirm("Удалить преподавателя?")) {
-            deleteCCTeacherOnServer(id).then(() => {
-                const select = document.getElementById('ccSelect');
-                if (select && select.value) {
-                    loadTeachersForCC(parseInt(select.value));
-                }
-                alert("Преподаватель удалён!");
-            });
-        }
-    };
-
-    window.viewTeacherAchievements = async function(id, name) {
-        const teacher = ccTeachers.find(t => t.id === id);
-        if (!teacher) return;
-        
-        selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
-        await loadTeacherEvents(teacher.teacher_name);
-        await loadTeacherAchievements(teacher.id);
-        teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === teacher.teacher_name);
+function attachMainEvents() {
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.onclick = () => { currentModule = btn.dataset.module; selectedTeacher = null; render(); });
+    document.querySelectorAll('.status-btn').forEach(btn => btn.onclick = () => { currentStatus = btn.dataset.status; render(); });
+    document.getElementById('logoutBtn').onclick = () => { currentUser = null; selectedTeacher = null; render(); };
+    document.getElementById('copyAllBtn').onclick = copyAllText;
+    document.getElementById('copyStatsBtn').onclick = copyStats;
+    document.getElementById('refreshBtn').onclick = async () => {
+        if (currentModule === 'student_contests') eventsData = await loadEvents();
+        if (currentModule === 'student_olympiads') studentOlympiads = await loadStudentOlympiads();
+        if (currentModule === 'teacher_contests') teacherContests = await loadTeacherContests();
+        if (currentModule === 'teacher_articles') teacherArticles = await loadTeacherArticles();
         render();
     };
-
-    function copyAllText() {
-        let items = [];
-        let title = '';
-        
-        if (currentModule === 'student_contests') {
-            const eventsForStatus = eventsData[currentStatus] || [];
-            items = sortByDate(eventsForStatus);
-            title = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 (СТУДЕНТЫ - КОНКУРСЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
-        } else if (currentModule === 'student_olympiads') {
-            items = sortByDate(studentOlympiads.filter(o => o.status === currentStatus));
-            title = `УЧАСТНИКИ МЕРОПРИЯТИЙ 2025-2026 (СТУДЕНТЫ - ОЛИМПИАДЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
-        } else if (currentModule === 'teacher_contests') {
-            items = sortByDate(teacherContests.filter(c => c.status === currentStatus));
-            title = `ДОСТИЖЕНИЯ ПРЕПОДАВАТЕЛЕЙ (КОНКУРСЫ)\n${currentStatus} УРОВЕНЬ\n\n`;
-        } else if (currentModule === 'teacher_articles') {
-            items = sortByDate(teacherArticles.filter(a => a.status === currentStatus));
-            title = `ДОСТИЖЕНИЯ ПРЕПОДАВАТЕЛЕЙ (СТАТЬИ)\n${currentStatus} УРОВЕНЬ\n\n`;
-        }
-        
-        if (items.length === 0) { alert('Нет данных для копирования'); return; }
-        
-        let text = title;
-        for (let idx = 0; idx < items.length; idx++) {
-            const item = items[idx];
-            text += `========================================\n`;
-            text += `№ ${idx+1}\n`;
-            text += `Наименование: ${item.name}\n`;
-            text += `Статус: ${item.status}\n`;
-            if (item.organizers) text += `Организаторы: ${item.organizers}\n`;
-            text += `Дата: ${formatDate(item.date)}\n`;
-            if (item.participants) {
-                text += `Участники:\n`;
-                const groups = groupParticipantsBySupervisor(item.participants);
-                for (const [sup, parts] of Object.entries(groups)) {
-                    text += `   Руководитель: ${sup}\n`;
-                    for (const p of parts) {
-                        text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`;
-                    }
-                }
-            }
-            if (item.teacher_name) text += `Преподаватель: ${item.teacher_name}\n`;
-            if (item.result) text += `Результат: ${item.result}\n`;
-            text += `========================================\n\n`;
-        }
-        
-        navigator.clipboard.writeText(text);
-        alert('Данные скопированы в буфер обмена');
+    if (document.getElementById('markServiceNoteBtn')) document.getElementById('markServiceNoteBtn').onclick = openMarkNoteWindow;
+    if (document.getElementById('generateServiceNoteBtn')) document.getElementById('generateServiceNoteBtn').onclick = openMultiGenerateNoteWindow;
+    if (document.getElementById('markServiceNoteOlympiadBtn')) document.getElementById('markServiceNoteOlympiadBtn').onclick = openMarkOlympiadNoteWindow;
+    if (document.getElementById('manageUsersBtn')) document.getElementById('manageUsersBtn').onclick = openUserManagement;
+    
+    // Админские обработчики для создания
+    if (currentUser?.role === 'admin') {
+        let olympiadParts = [];
+        const updateParts = () => { const c = document.getElementById('participantsList'); if (!c) return; if (!pendingParticipants.length) { c.innerHTML = '<div style="color:gray;">Список пуст</div>'; return; } let html = ''; const groups = {}; for (const p of pendingParticipants) { const sup = p.supervisor; if (!groups[sup]) groups[sup] = []; groups[sup].push(p); } for (const [sup, parts] of Object.entries(groups)) { html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`; for (let i=0;i<parts.length;i++) html += `<div style="margin-left:1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`; html += '<div style="margin-bottom:0.5rem;"></div>'; } c.innerHTML = html; };
+        const updateOlympiadParts = () => { const c = document.getElementById('olympiadParticipantsList'); if (!c) return; if (!olympiadParts.length) { c.innerHTML = '<div style="color:gray;">Список пуст</div>'; return; } let html = ''; const groups = {}; for (const p of olympiadParts) { const sup = p.supervisor; if (!groups[sup]) groups[sup] = []; groups[sup].push(p); } for (const [sup, parts] of Object.entries(groups)) { html += `<div><strong>Рук: ${escapeHtml(sup)} (${parts.length} чел.)</strong></div>`; for (let i=0;i<parts.length;i++) html += `<div style="margin-left:1rem;">${i+1}. ${escapeHtml(parts[i].full_name)} (гр.${escapeHtml(parts[i].group)}) - ${parts[i].result}</div>`; html += '<div style="margin-bottom:0.5rem;"></div>'; } c.innerHTML = html; };
+        if (document.getElementById('addParticipantBtn')) document.getElementById('addParticipantBtn').onclick = () => { const name = document.getElementById('participantName').value.trim(), group = document.getElementById('participantGroup').value.trim(), sup = document.getElementById('participantSupervisor').value.trim() || '—', res = document.getElementById('participantResult').value; if (!name || !group) { alert('Заполните ФИО и группу!'); return; } pendingParticipants.push({ full_name: name, group, supervisor: sup, result: res }); updateParts(); document.getElementById('participantName').value = ''; document.getElementById('participantGroup').value = ''; document.getElementById('participantSupervisor').value = ''; };
+        if (document.getElementById('clearParticipantsBtn')) document.getElementById('clearParticipantsBtn').onclick = () => { pendingParticipants = []; updateParts(); };
+        if (document.getElementById('saveEventBtn')) document.getElementById('saveEventBtn').onclick = async () => { const name = document.getElementById('eventName').value.trim(), status = document.getElementById('eventStatus').value, org = document.getElementById('eventOrganizers').value.trim() || 'Не указаны', date = document.getElementById('eventDate').value.trim() || new Date().toLocaleDateString('ru-RU'); if (!name) { alert('Введите название!'); return; } if (!pendingParticipants.length) { alert('Добавьте участников!'); return; } if (await saveEventToServer({ name, status, organizers: org, date, participants: pendingParticipants })) { pendingParticipants = []; document.getElementById('eventName').value = ''; document.getElementById('eventOrganizers').value = ''; updateParts(); eventsData = await loadEvents(); render(); alert('Сохранено!'); } else alert('Ошибка!'); };
+        if (document.getElementById('addOlympiadParticipantBtn')) document.getElementById('addOlympiadParticipantBtn').onclick = () => { const name = document.getElementById('olympiadParticipantName').value.trim(), group = document.getElementById('olympiadParticipantGroup').value.trim(), sup = document.getElementById('olympiadParticipantSupervisor').value.trim() || '—', res = document.getElementById('olympiadParticipantResult').value; if (!name || !group) { alert('Заполните ФИО и группу!'); return; } olympiadParts.push({ full_name: name, group, supervisor: sup, result: res }); updateOlympiadParts(); document.getElementById('olympiadParticipantName').value = ''; document.getElementById('olympiadParticipantGroup').value = ''; document.getElementById('olympiadParticipantSupervisor').value = ''; };
+        if (document.getElementById('clearOlympiadParticipantsBtn')) document.getElementById('clearOlympiadParticipantsBtn').onclick = () => { olympiadParts = []; updateOlympiadParts(); };
+        if (document.getElementById('saveOlympiadBtn')) document.getElementById('saveOlympiadBtn').onclick = async () => { const name = document.getElementById('olympiadName').value.trim(), status = document.getElementById('olympiadStatus').value, org = document.getElementById('olympiadOrganizers').value.trim() || 'Не указаны', date = document.getElementById('olympiadDate').value.trim() || new Date().toLocaleDateString('ru-RU'); if (!name) { alert('Введите название!'); return; } if (!olympiadParts.length) { alert('Добавьте участников!'); return; } if (await saveStudentOlympiadToServer({ name, status, organizers: org, date, participants: olympiadParts })) { olympiadParts = []; document.getElementById('olympiadName').value = ''; document.getElementById('olympiadOrganizers').value = ''; updateOlympiadParts(); studentOlympiads = await loadStudentOlympiads(); render(); alert('Сохранено!'); } else alert('Ошибка!'); };
+        if (document.getElementById('saveContestBtn')) document.getElementById('saveContestBtn').onclick = async () => { const name = document.getElementById('contestName').value.trim(), status = document.getElementById('contestStatus').value, date = document.getElementById('contestDate').value.trim() || new Date().toLocaleDateString('ru-RU'), teacher = document.getElementById('contestTeacherName').value.trim(), res = document.getElementById('contestResult').value; if (!name || !teacher) { alert('Заполните название и ФИО!'); return; } if (await saveTeacherContestToServer({ name, status, date, teacher_name: teacher, result: res })) { teacherContests = await loadTeacherContests(); render(); alert('Сохранено!'); } else alert('Ошибка!'); };
+        if (document.getElementById('saveArticleBtn')) document.getElementById('saveArticleBtn').onclick = async () => { const name = document.getElementById('articleName').value.trim(), status = document.getElementById('articleStatus').value, date = document.getElementById('articleDate').value.trim() || new Date().toLocaleDateString('ru-RU'), teacher = document.getElementById('articleTeacherName').value.trim(); if (!name || !teacher) { alert('Заполните название и ФИО!'); return; } if (await saveTeacherArticleToServer({ name, status, date, teacher_name: teacher })) { teacherArticles = await loadTeacherArticles(); render(); alert('Сохранено!'); } else alert('Ошибка!'); };
     }
-
-    function copyStats() {
-        let items = [];
-        if (currentModule === 'student_contests') {
-            items = eventsData[currentStatus] || [];
-        } else if (currentModule === 'student_olympiads') {
-            items = studentOlympiads.filter(o => o.status === currentStatus);
-        } else if (currentModule === 'teacher_contests') {
-            items = teacherContests.filter(c => c.status === currentStatus);
-        } else if (currentModule === 'teacher_articles') {
-            items = teacherArticles.filter(a => a.status === currentStatus);
-        }
-        
-        const sorted = sortByDate(items);
-        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
-        let totalParts = 0;
-        
-        for (const item of sorted) {
-            if (item.participants) {
-                for (const p of item.participants) {
-                    totalStats[p.result] = (totalStats[p.result] || 0) + 1;
-                    totalParts++;
-                }
-            } else {
-                if (item.result) {
-                    totalStats[item.result] = (totalStats[item.result] || 0) + 1;
-                    totalParts++;
-                }
-            }
-        }
-        
-        let text = `СТАТИСТИКА ПО ${currentStatus} УРОВНЮ\n`;
-        text += `Участие: ${totalStats["Участие"]} | 1 место: ${totalStats["Диплом 1 место"]} | 2 место: ${totalStats["Диплом 2 место"]} | 3 место: ${totalStats["Диплом 3 место"]} | Номинации: ${totalStats["Номинация"]}\n`;
-        text += `Всего записей: ${totalParts}\n`;
-        navigator.clipboard.writeText(text);
-        alert('Статистика скопирована');
+    
+    // Управление ЦК
+    const ccSelect = document.getElementById('ccSelect');
+    if (ccSelect) ccSelect.onchange = (e) => { if (e.target.value) loadTeachersForCC(parseInt(e.target.value)); else document.getElementById('ccTeachersPanel').innerHTML = ''; };
+    const addTeacherBtn = document.getElementById('addTeacherBtn');
+    if (addTeacherBtn) addTeacherBtn.onclick = () => { const sel = document.getElementById('ccSelect'); if (!sel.value) { alert('Выберите ЦК!'); return; } const name = prompt('ФИО преподавателя:'); if (name) addCCTeacherToServer({ teacher_name: name, cc_id: parseInt(sel.value), active: true }).then(() => { loadTeachersForCC(parseInt(sel.value)); alert('Добавлен!'); }); };
+    const addCCBtn = document.getElementById('addCCBtn');
+    if (addCCBtn) addCCBtn.onclick = async () => { const name = document.getElementById('newCCName').value.trim(); if (!name) { alert('Введите название!'); return; } const login = document.getElementById('newCCChairmanLogin').value.trim(), chairman = document.getElementById('newCCChairmanName').value.trim(); if (await addCycleCommissionToServer({ name, chairman_username: login, chairman_name: chairman })) { await loadCommissions(); const sel = document.getElementById('ccSelect'); if (sel) sel.innerHTML = `<option value="">-- Выберите ЦК --</option>${commissions.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}`; document.getElementById('newCCName').value = ''; document.getElementById('newCCChairmanLogin').value = ''; document.getElementById('newCCChairmanName').value = ''; alert('ЦК добавлен!'); } else alert('Ошибка!'); };
+    
+    const teachersList = document.getElementById('teachersList');
+    if (teachersList && !selectedTeacher && currentUser?.role === 'chairman') {
+        loadCCTeachers(currentUser.cc_id).then(() => { if (!ccTeachers.length) teachersList.innerHTML = '<div style="color:gray;">Нет преподавателей</div>'; else teachersList.innerHTML = ccTeachers.map(t => `<div class="teacher-card" onclick="selectTeacher(${t.id}, '${escapeHtml(t.teacher_name)}')"><div class="teacher-name">${escapeHtml(t.teacher_name)}</div><div style="font-size:0.8rem;">Нажмите для просмотра</div></div>`).join(''); });
     }
+}
 
-    async function openMarkNoteWindow() {
-        const status = prompt("Выберите уровень мероприятия:\n" + STATUSES.join("\n"), currentStatus);
-        if (!status || !STATUSES.includes(status)) {
-            alert("Неверный уровень!");
-            return;
-        }
-        
-        const eventsList = eventsData[status] || [];
-        if (eventsList.length === 0) {
-            alert("Нет мероприятий в этом уровне!");
-            return;
-        }
-        
-        let eventOptions = "";
-        for (let i = 0; i < eventsList.length; i++) {
-            eventOptions += `${i+1}. ${eventsList[i].name} (${formatDate(eventsList[i].date)})\n`;
-        }
-        
-        const eventNum = prompt(`Выберите мероприятие:\n${eventOptions}`, "1");
-        if (!eventNum) return;
-        
-        const idx = parseInt(eventNum) - 1;
-        if (idx < 0 || idx >= eventsList.length) {
-            alert("Неверный номер!");
-            return;
-        }
-        
-        const event = eventsList[idx];
-        let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
-        if (!date) return;
-        
-        if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
-            try {
-                let parsedDate = new Date(date);
-                if (!isNaN(parsedDate.getTime())) {
-                    let day = parsedDate.getDate().toString().padStart(2, '0');
-                    let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
-                    let year = parsedDate.getFullYear();
-                    date = `${day}.${month}.${year}`;
-                }
-            } catch(e) {}
-        }
-        
-        await updateServiceNoteOnServer(event.id, true, date);
-        eventsData = await loadEvents();
-        render();
-        alert(`Служебная записка отмечена! Дата: ${date}`);
+async function loadTeachersForCC(ccId) {
+    const teachers = await loadCCTeachers(ccId);
+    const container = document.getElementById('ccTeachersPanel');
+    if (!container) return;
+    if (!teachers.length) { container.innerHTML = '<div style="color:gray;">Нет преподавателей</div>'; return; }
+    container.innerHTML = `<div class="teachers-list">${teachers.map(t => `<div class="teacher-card"><div class="teacher-name">${escapeHtml(t.teacher_name)}</div><div>ID: ${t.id} | Активен: ${t.active ? 'Да' : 'Нет'}</div><div><button class="btn-edit" onclick="editTeacher(${t.id}, '${escapeHtml(t.teacher_name)}', ${t.cc_id}, ${t.active})">✏️</button><button class="btn-delete" onclick="deleteTeacher(${t.id})">🗑</button><button class="btn-secondary" onclick="viewTeacherAchievements(${t.id}, '${escapeHtml(t.teacher_name)}')">📊</button></div></div>`).join('')}</div>`;
+}
+
+window.editTeacher = function(id, name, ccId, active) { const newName = prompt("Новое имя:", name); if (!newName) return; const newActive = confirm("Активен?"); updateCCTeacherOnServer({ id, teacher_name: newName, cc_id: ccId, active: newActive }).then(() => { const sel = document.getElementById('ccSelect'); if (sel && sel.value) loadTeachersForCC(parseInt(sel.value)); alert("Обновлено!"); }); };
+window.deleteTeacher = function(id) { if (confirm("Удалить?")) deleteCCTeacherOnServer(id).then(() => { const sel = document.getElementById('ccSelect'); if (sel && sel.value) loadTeachersForCC(parseInt(sel.value)); alert("Удалено!"); }); };
+window.viewTeacherAchievements = async function(id, name) { const t = ccTeachers.find(t => t.id === id); if (!t) return; selectedTeacher = { id: t.id, teacher_name: t.teacher_name }; await loadTeacherEvents(t.teacher_name); await loadTeacherAchievements(t.id); teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === t.teacher_name); render(); };
+
+function copyAllText() {
+    let items = [], title = '';
+    if (currentModule === 'student_contests') { items = sortByDate(eventsData[currentStatus] || []); title = `СТУДЕНТЫ - КОНКУРСЫ\n${currentStatus}\n\n`; }
+    else if (currentModule === 'student_olympiads') { items = sortByDate(studentOlympiads.filter(o => o.status === currentStatus)); title = `СТУДЕНТЫ - ОЛИМПИАДЫ\n${currentStatus}\n\n`; }
+    else if (currentModule === 'teacher_contests') { items = sortByDate(teacherContests.filter(c => c.status === currentStatus)); title = `ПРЕПОДАВАТЕЛИ - КОНКУРСЫ\n${currentStatus}\n\n`; }
+    else if (currentModule === 'teacher_articles') { items = sortByDate(teacherArticles.filter(a => a.status === currentStatus)); title = `ПРЕПОДАВАТЕЛИ - СТАТЬИ\n${currentStatus}\n\n`; }
+    if (!items.length) { alert('Нет данных'); return; }
+    let text = title;
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        text += `========================================\n№ ${i+1}\nНаименование: ${it.name}\nСтатус: ${it.status}\nДата: ${formatDate(it.date)}\n`;
+        if (it.organizers) text += `Организаторы: ${it.organizers}\n`;
+        if (it.participants) { text += `Участники:\n`; for (const [sup, parts] of Object.entries(groupParticipantsBySupervisor(it.participants))) { text += `   Руководитель: ${sup}\n`; for (const p of parts) text += `      • ${p.full_name} (гр.${p.group}) - ${p.result}\n`; } }
+        if (it.teacher_name) text += `Преподаватель: ${it.teacher_name}\n`;
+        if (it.result) text += `Результат: ${it.result}\n`;
+        text += `========================================\n\n`;
     }
+    navigator.clipboard.writeText(text);
+    alert('Скопировано!');
+}
 
-    async function openMarkOlympiadNoteWindow() {
-        const status = prompt("Выберите уровень олимпиады:\n" + STATUSES.join("\n"), currentStatus);
-        if (!status || !STATUSES.includes(status)) {
-            alert("Неверный уровень!");
-            return;
-        }
-        
-        const olympiadsList = studentOlympiads.filter(o => o.status === status);
-        if (olympiadsList.length === 0) {
-            alert("Нет олимпиад в этом уровне!");
-            return;
-        }
-        
-        let eventOptions = "";
-        for (let i = 0; i < olympiadsList.length; i++) {
-            eventOptions += `${i+1}. ${olympiadsList[i].name} (${formatDate(olympiadsList[i].date)})\n`;
-        }
-        
-        const eventNum = prompt(`Выберите олимпиаду:\n${eventOptions}`, "1");
-        if (!eventNum) return;
-        
-        const idx = parseInt(eventNum) - 1;
-        if (idx < 0 || idx >= olympiadsList.length) {
-            alert("Неверный номер!");
-            return;
-        }
-        
-        const olympiad = olympiadsList[idx];
-        let date = prompt("Дата написания служебной записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
-        if (!date) return;
-        
-        if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
-            try {
-                let parsedDate = new Date(date);
-                if (!isNaN(parsedDate.getTime())) {
-                    let day = parsedDate.getDate().toString().padStart(2, '0');
-                    let month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
-                    let year = parsedDate.getFullYear();
-                    date = `${day}.${month}.${year}`;
-                }
-            } catch(e) {}
-        }
-        
-        olympiad.service_note_written = true;
-        olympiad.service_note_date = date;
-        await updateStudentOlympiadOnServer(olympiad);
-        studentOlympiads = await loadStudentOlympiads();
-        render();
-        alert(`Служебная записка отмечена! Дата: ${date}`);
+function copyStats() {
+    let items = [];
+    if (currentModule === 'student_contests') items = eventsData[currentStatus] || [];
+    else if (currentModule === 'student_olympiads') items = studentOlympiads.filter(o => o.status === currentStatus);
+    else if (currentModule === 'teacher_contests') items = teacherContests.filter(c => c.status === currentStatus);
+    else if (currentModule === 'teacher_articles') items = teacherArticles.filter(a => a.status === currentStatus);
+    let stats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 }, total = 0;
+    for (const it of items) { if (it.participants) for (const p of it.participants) { stats[p.result]++; total++; } else if (it.result) { stats[it.result]++; total++; } }
+    const text = `СТАТИСТИКА ПО ${currentStatus}\nУчастие: ${stats["Участие"]} | 1 место: ${stats["Диплом 1 место"]} | 2 место: ${stats["Диплом 2 место"]} | 3 место: ${stats["Диплом 3 место"]} | Номинации: ${stats["Номинация"]}\nВсего: ${total}`;
+    navigator.clipboard.writeText(text);
+    alert('Статистика скопирована');
+}
+
+async function openMarkNoteWindow() {
+    const status = prompt("Уровень:\n" + STATUSES.join("\n"), currentStatus);
+    if (!status || !STATUSES.includes(status)) { alert("Неверный уровень!"); return; }
+    const list = eventsData[status] || [];
+    if (!list.length) { alert("Нет мероприятий!"); return; }
+    let opts = ""; for (let i=0;i<list.length;i++) opts += `${i+1}. ${list[i].name} (${formatDate(list[i].date)})\n`;
+    const num = prompt(`Выберите:\n${opts}`, "1");
+    if (!num) return;
+    const idx = parseInt(num)-1;
+    if (idx<0 || idx>=list.length) { alert("Неверный номер!"); return; }
+    const ev = list[idx];
+    let date = prompt("Дата записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+    if (!date) return;
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) { try { let d = new Date(date); if (!isNaN(d.getTime())) date = `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`; } catch(e){} }
+    await updateServiceNoteOnServer(ev.id, true, date);
+    eventsData = await loadEvents();
+    render();
+    alert(`Отмечено! Дата: ${date}`);
+}
+
+async function openMarkOlympiadNoteWindow() {
+    const status = prompt("Уровень:\n" + STATUSES.join("\n"), currentStatus);
+    if (!status || !STATUSES.includes(status)) { alert("Неверный уровень!"); return; }
+    const list = studentOlympiads.filter(o => o.status === status);
+    if (!list.length) { alert("Нет олимпиад!"); return; }
+    let opts = ""; for (let i=0;i<list.length;i++) opts += `${i+1}. ${list[i].name} (${formatDate(list[i].date)})\n`;
+    const num = prompt(`Выберите:\n${opts}`, "1");
+    if (!num) return;
+    const idx = parseInt(num)-1;
+    if (idx<0 || idx>=list.length) { alert("Неверный номер!"); return; }
+    const o = list[idx];
+    let date = prompt("Дата записки (ДД.ММ.ГГГГ):", new Date().toLocaleDateString('ru-RU'));
+    if (!date) return;
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(date)) { try { let d = new Date(date); if (!isNaN(d.getTime())) date = `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`; } catch(e){} }
+    o.service_note_written = true;
+    o.service_note_date = date;
+    await updateStudentOlympiadOnServer(o);
+    studentOlympiads = await loadStudentOlympiads();
+    render();
+    alert(`Отмечено! Дата: ${date}`);
+}
+
+function openMultiGenerateNoteWindow() {
+    let all = []; for (const s of STATUSES) for (const e of eventsData[s] || []) all.push({ ...e, status: s });
+    all = sortByDate(all);
+    let list = ""; for (let i=0;i<all.length;i++) list += `${i+1}. ${all[i].name} (${all[i].status}, ${formatDate(all[i].date)})\n`;
+    const input = prompt(`Выберите номера через запятую:\n${list}`, "1");
+    if (!input) return;
+    const nums = input.split(",").map(n=>parseInt(n.trim())).filter(n=>!isNaN(n)&&n>0&&n<=all.length);
+    const selected = nums.map(n=>all[n-1]);
+    if (!selected.length) { alert("Не выбрано!"); return; }
+    const noteNum = prompt("№ служебной записки:", "01-03/2026") || "___";
+    const today = new Date().toLocaleDateString('ru-RU');
+    let allPrize = [];
+    for (const ev of selected) { const full = eventsData[ev.status]?.find(e=>e.id===ev.id); if (full) { const prize = full.participants.filter(p=>PRIZE_RESULTS.includes(p.result)); if (prize.length) allPrize.push({ event: full, participants: prize }); } }
+    if (!allPrize.length) { alert("Нет призовых мест!"); return; }
+    let eventsText = '';
+    for (const item of allPrize) { const ev = item.event; const groups = groupParticipantsBySupervisor(item.participants); eventsText += `\n${'─'.repeat(70)}\nМЕРОПРИЯТИЕ: ${ev.name}\nСтатус: ${ev.status}\nДата: ${formatDate(ev.date)}\nРЕЗУЛЬТАТЫ:\n`; for (const [sup, parts] of Object.entries(groups)) { eventsText += `Руководитель: ${sup}\n`; for (const p of parts) eventsText += `  - ${p.full_name} (гр.${p.group}) — ${p.result}\n`; } }
+    const result = `═══════════════════════════════════════════════════════════════\nСЛУЖЕБНАЯ ЗАПИСКА № ${noteNum}\n═══════════════════════════════════════════════════════════════\nДата: ${today}\n\nНастоящим сообщаю о результатах участия студентов:\n${eventsText}\n${'═'.repeat(70)}\nИтого призовых: ${allPrize.reduce((s,i)=>s+i.participants.length,0)}\n═══════════════════════════════════════════════════════════════\nМетодист _________________ / Рахуба К.А. /\n═══════════════════════════════════════════════════════════════`;
+    navigator.clipboard.writeText(result);
+    alert("Служебная записка скопирована!");
+}
+
+async function openUserManagement() {
+    const users = await apiCall("getUsers");
+    if (!users) { alert("Ошибка загрузки!"); return; }
+    let list = "📋 ПОЛЬЗОВАТЕЛИ:\n\n";
+    for (const [login, data] of Object.entries(users)) list += `🔹 ${login} | ${data.name} | ${data.role} | ЦК: ${data.cc_id || '—'}\n`;
+    const action = prompt(`${list}\n\n1 - Добавить\n2 - Удалить\n3 - Назад`, "3");
+    if (action === "1") {
+        const login = prompt("Логин (латиницей):"); if (!login) return;
+        if (users[login]) { alert("Уже существует!"); return; }
+        const pwd = prompt("Пароль:"); if (!pwd) return;
+        const name = prompt("Имя:"); if (!name) return;
+        const role = prompt("Роль (admin/editor/viewer/chairman):", "viewer"); if (!role || !["admin","editor","viewer","chairman"].includes(role)) { alert("Неверная роль!"); return; }
+        let cc = null; if (role === "chairman") { cc = prompt("ID ЦК (1-12):"); if (!cc || isNaN(parseInt(cc))) { alert("Неверный ID!"); return; } cc = parseInt(cc); }
+        if (await saveUserToServer({ login: login.toLowerCase(), password: pwd, name, role: role.toLowerCase(), cc_id: cc })) { alert("Добавлен!"); localStorage.removeItem("monitoring_users_cache"); render(); } else alert("Ошибка!");
+    } else if (action === "2") {
+        const login = prompt("Логин для удаления:"); if (!login) return;
+        if (login === "muhanov") { alert("Нельзя удалить админа!"); return; }
+        if (!users[login]) { alert("Не найден!"); return; }
+        if (confirm(`Удалить ${login}?`)) { if (await deleteUserOnServer(login)) { alert("Удален!"); localStorage.removeItem("monitoring_users_cache"); render(); } else alert("Ошибка!"); }
     }
+}
 
-    function openMultiGenerateNoteWindow() {
-        let allEvents = [];
-        for (const status of STATUSES) {
-            const events = eventsData[status] || [];
-            for (const e of events) {
-                allEvents.push({ ...e, status });
-            }
-        }
-        allEvents = sortByDate(allEvents);
-        
-        let eventList = "";
-        for (let i = 0; i < allEvents.length; i++) {
-            eventList += `${i+1}. ${allEvents[i].name} (${allEvents[i].status}, ${formatDate(allEvents[i].date)})\n`;
-        }
-        
-        const input = prompt(`Выберите номера мероприятий через запятую:\n\n${eventList}\n\nПример: 1,3,5`);
-        if (!input) return;
-        
-        const numbers = input.split(",").map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n > 0 && n <= allEvents.length);
-        const selectedEvents = numbers.map(n => allEvents[n-1]);
-        
-        if (selectedEvents.length === 0) {
-            alert("Не выбрано ни одного мероприятия!");
-            return;
-        }
-        
-        const noteNumber = prompt("№ служебной записки:", "01-03/2026") || "___";
-        const today = new Date().toLocaleDateString('ru-RU');
-        
-        let allPrizeParticipants = [];
-        for (const ev of selectedEvents) {
-            const fullEvent = eventsData[ev.status]?.find(e => e.id === ev.id);
-            if (!fullEvent) continue;
-            const prizeParticipants = fullEvent.participants.filter(p => PRIZE_RESULTS.includes(p.result));
-            if (prizeParticipants.length > 0) {
-                allPrizeParticipants.push({ event: fullEvent, participants: prizeParticipants });
-            }
-        }
-        
-        if (allPrizeParticipants.length === 0) {
-            alert("В выбранных мероприятиях нет призовых мест!");
-            return;
-        }
-        
-        let eventsText = '';
-        for (const item of allPrizeParticipants) {
-            const ev = item.event;
-            const groups = groupParticipantsBySupervisor(item.participants);
-            eventsText += `\n${'─'.repeat(70)}\n`;
-            eventsText += `МЕРОПРИЯТИЕ: ${ev.name}\n`;
-            eventsText += `Статус: ${ev.status}\n`;
-            eventsText += `Дата проведения: ${formatDate(ev.date)}\n`;
-            eventsText += `РЕЗУЛЬТАТЫ (призовые места):\n`;
-            for (const [sup, parts] of Object.entries(groups)) {
-                eventsText += `Руководитель: ${sup}\n`;
-                for (const p of parts) {
-                    eventsText += `  - ${p.full_name} (гр.${p.group}) — ${p.result}\n`;
-                }
-            }
-        }
-        
-        const result = `
-═══════════════════════════════════════════════════════════════
-                    СЛУЖЕБНАЯ ЗАПИСКА № ${noteNumber}
-═══════════════════════════════════════════════════════════════
-
-Дата: ${today}
-
-Настоящим сообщаю о результатах участия студентов 
-Альметьевского политехнического техникума в следующих мероприятиях:
-${eventsText}
-${'═'.repeat(70)}
-
-Итого по всем мероприятиям: ${allPrizeParticipants.reduce((sum, item) => sum + item.participants.length, 0)} призовых мест
-
-═══════════════════════════════════════════════════════════════
-Методист _________________ / Рахуба К.А. /
-═══════════════════════════════════════════════════════════════
-        `;
-        
-        navigator.clipboard.writeText(result);
-        alert("Текст служебной записки скопирован в буфер обмена!");
-    }
-
-    async function openUserManagement() {
-        const users = await apiCall("getUsers");
-        
-        if (!users || Object.keys(users).length === 0) {
-            alert("Не удалось загрузить список пользователей! Проверьте подключение к интернету.");
-            return;
-        }
-        
-        let userList = "📋 ТЕКУЩИЕ ПОЛЬЗОВАТЕЛИ:\n\n";
-        for (const [login, data] of Object.entries(users)) {
-            userList += `🔹 Логин: ${login}\n   Имя: ${data.name}\n   Роль: ${data.role}\n   ЦК ID: ${data.cc_id || '—'}\n\n`;
-        }
-        
-        const action = prompt(`${userList}\n\n✏️ Что сделать?\n\n1 - Добавить пользователя\n2 - Удалить пользователя\n3 - Назад`, "3");
-        
-        if (action === "1") {
-            const newLogin = prompt("🔑 Введите логин (латиницей, только буквы и цифры):");
-            if (!newLogin) return;
-            
-            if (users[newLogin]) {
-                alert(`❌ Пользователь с логином "${newLogin}" уже существует!`);
-                return;
-            }
-            
-            const newPassword = prompt("🔒 Введите пароль:");
-            if (!newPassword) return;
-            
-            const newName = prompt("👤 Введите полное имя (например: Иванова А.А.):");
-            if (!newName) return;
-            
-            const newRole = prompt("👔 Выберите роль:\n- admin (администратор)\n- editor (методист)\n- viewer (просмотр)\n- chairman (председатель ЦК)\n\nВведите роль:", "viewer");
-            if (!newRole || !["admin", "editor", "viewer", "chairman"].includes(newRole.toLowerCase())) {
-                alert("❌ Неверная роль! Доступные роли: admin, editor, viewer, chairman");
-                return;
-            }
-            
-            let ccId = null;
-            if (newRole.toLowerCase() === "chairman") {
-                ccId = prompt("🏢 Введите ID ЦК (1-12):");
-                if (!ccId || isNaN(parseInt(ccId))) {
-                    alert("❌ Неверный ID ЦК!");
-                    return;
-                }
-                ccId = parseInt(ccId);
-            }
-            
-            const result = await saveUserToServer({ 
-                login: newLogin.toLowerCase(), 
-                password: newPassword, 
-                name: newName, 
-                role: newRole.toLowerCase(), 
-                cc_id: ccId 
-            });
-            
-            if (result) {
-                alert(`✅ Пользователь ${newLogin} успешно добавлен!`);
-                localStorage.removeItem("monitoring_users_cache");
-                render();
-            } else { 
-                alert("❌ Ошибка при добавлении пользователя! Проверьте подключение к интернету."); 
-            }
-            
-        } else if (action === "2") {
-            const deleteLogin = prompt("🗑 Введите логин пользователя для удаления:");
-            if (!deleteLogin) return;
-            
-            if (deleteLogin === "muhanov") { 
-                alert("❌ Нельзя удалить главного администратора!"); 
-                return; 
-            }
-            
-            if (!users[deleteLogin]) {
-                alert(`❌ Пользователь с логином "${deleteLogin}" не найден!`);
-                return;
-            }
-            
-            const confirmDelete = confirm(`⚠️ ВНИМАНИЕ! Вы действительно хотите удалить пользователя:\n\nЛогин: ${deleteLogin}\nИмя: ${users[deleteLogin].name}\nРоль: ${users[deleteLogin].role}\n\nЭто действие НЕОБРАТИМО!`);
-            
-            if (confirmDelete) {
-                const result = await deleteUserOnServer(deleteLogin);
-                if (result) {
-                    alert(`✅ Пользователь ${deleteLogin} успешно удален!`);
-                    localStorage.removeItem("monitoring_users_cache");
-                    render();
-                } else {
-                    alert("❌ Ошибка при удалении пользователя!");
-                }
-            }
-        }
-    }
-
-    (async function init() {
-        console.log("Инициализация приложения...");
-        eventsData = await loadEvents();
-        studentOlympiads = await loadStudentOlympiads();
-        teacherContests = await loadTeacherContests();
-        teacherArticles = await loadTeacherArticles();
-        await loadCommissions();
-        render();
-    })();
+(async function init() {
+    eventsData = await loadEvents();
+    studentOlympiads = await loadStudentOlympiads();
+    teacherContests = await loadTeacherContests();
+    teacherArticles = await loadTeacherArticles();
+    await loadCommissions();
+    render();
+})();
 </script>
 </body>
 </html>
