@@ -154,6 +154,9 @@
     async function addCycleCommissionToServer(data) { return await apiCall("addCycleCommission", data); }
     async function updateCycleCommissionOnServer(data) { return await apiCall("updateCycleCommission", data); }
     async function deleteCycleCommissionOnServer(id) { return await apiCall("deleteCycleCommission", { id }); }
+    
+    async function saveUserToServer(data) { return await apiCall("saveUser", data); }
+    async function deleteUserOnServer(login) { return await apiCall("deleteUser", { login }); }
 
     function sortByDate(items) {
         return [...items].sort((a, b) => {
@@ -224,8 +227,6 @@
                         <input type="password" id="password" placeholder="Введите пароль">
                     </div>
                     <button id="loginBtn" style="margin-top: 1rem; width: 100%;">🔑 ВОЙТИ</button>
-                    <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--secondary);">
-                    </div>
                 </div>
             </div>
         `;
@@ -319,7 +320,6 @@
                     <div class="item-field"><span class="item-label">Организаторы:</span> ${escapeHtml(ev.organizers)}</div>
                     <div class="item-field"><span class="item-label">Число участников:</span> ${ev.participants_count}</div>
                     <div class="item-field"><span class="item-label">Дата проведения:</span> ${formatDate(ev.date)}</div>
-                    <div class="item-field"><span class="item-label">Результат:</span> ${ev.participants[0]?.result || ''}</div>
                     <div class="service-note-status"><span class="item-label">Служебная записка:</span> ${noteStatus}</div>
                     <div class="item-field"><span class="item-label">Участники, группа:</span></div>
                     <div class="participant-list">${participantsHtml}</div>
@@ -570,6 +570,24 @@
     function renderTeacherContests(navHtml, isAdmin, isEditor) {
         const sortedContests = sortByDate(teacherContests.filter(c => c.status === currentStatus));
         
+        let totalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
+        for (const c of sortedContests) {
+            totalStats[c.result] = (totalStats[c.result] || 0) + 1;
+        }
+        
+        const statsHtml = `
+            <div class="stats">
+                <div class="stats-grid">
+                    <span>📊 Участие: ${totalStats["Участие"]}</span>
+                    <span>🥇 1 место: ${totalStats["Диплом 1 место"]}</span>
+                    <span>🥈 2 место: ${totalStats["Диплом 2 место"]}</span>
+                    <span>🥉 3 место: ${totalStats["Диплом 3 место"]}</span>
+                    <span>🏆 Номинации: ${totalStats["Номинация"]}</span>
+                    <span>👥 Всего записей: ${sortedContests.length}</span>
+                </div>
+            </div>
+        `;
+        
         let itemsHtml = '';
         for (let idx = 0; idx < sortedContests.length; idx++) {
             const c = sortedContests[idx];
@@ -650,6 +668,7 @@
                     <div class="items-list" id="itemsList">
                         ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
                     </div>
+                    ${statsHtml}
                 </div>
                 ${adminFormHtml}
             </div>
@@ -658,6 +677,14 @@
 
     function renderTeacherArticles(navHtml, isAdmin, isEditor) {
         const sortedArticles = sortByDate(teacherArticles.filter(a => a.status === currentStatus));
+        
+        const statsHtml = `
+            <div class="stats">
+                <div class="stats-grid">
+                    <span>📄 Всего статей: ${sortedArticles.length}</span>
+                </div>
+            </div>
+        `;
         
         let itemsHtml = '';
         for (let idx = 0; idx < sortedArticles.length; idx++) {
@@ -734,6 +761,7 @@
                     <div class="items-list" id="itemsList">
                         ${itemsHtml || '<div style="padding: 2rem; text-align: center;">Нет данных</div>'}
                     </div>
+                    ${statsHtml}
                 </div>
                 ${adminFormHtml}
             </div>
@@ -772,16 +800,10 @@
     function renderTeacherProfile(navHtml) {
         const { stats: studentStats, total: studentTotal } = getTeacherStats(teacherEvents);
         
-        const achievementsByStatus = {};
+        // Подсчет личных достижений по статусам
+        const personalStats = { "Участие": 0, "Диплом 1 место": 0, "Диплом 2 место": 0, "Диплом 3 место": 0, "Номинация": 0 };
         for (const a of teacherAchievements) {
-            if (!achievementsByStatus[a.status]) achievementsByStatus[a.status] = [];
-            achievementsByStatus[a.status].push(a);
-        }
-        
-        const articlesByStatus = {};
-        for (const a of teacherPersonalArticles) {
-            if (!articlesByStatus[a.status]) articlesByStatus[a.status] = [];
-            articlesByStatus[a.status].push(a);
+            personalStats[a.result] = (personalStats[a.result] || 0) + 1;
         }
         
         return `
@@ -805,7 +827,7 @@
                 <div class="panel">
                     <div class="panel-title">👩‍🏫 ${escapeHtml(selectedTeacher.teacher_name)}</div>
                     
-                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📊 Статистика по студентам</div>
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📊 Статистика по студентам (мониторинг)</div>
                     <div class="stats-grid" style="margin-bottom: 1rem;">
                         <span>📊 Участие: ${studentStats["Участие"]}</span>
                         <span>🥇 1 место: ${studentStats["Диплом 1 место"]}</span>
@@ -832,7 +854,15 @@
                         `;
                     }).join('')}
                     
-                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">🏅 Личные достижения преподавателя</div>
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">🏅 Личные достижения преподавателя (конкурсы)</div>
+                    <div class="stats-grid" style="margin-bottom: 1rem;">
+                        <span>📊 Участие: ${personalStats["Участие"]}</span>
+                        <span>🥇 1 место: ${personalStats["Диплом 1 место"]}</span>
+                        <span>🥈 2 место: ${personalStats["Диплом 2 место"]}</span>
+                        <span>🥉 3 место: ${personalStats["Диплом 3 место"]}</span>
+                        <span>🏆 Номинации: ${personalStats["Номинация"]}</span>
+                        <span>👥 Всего конкурсов: ${teacherAchievements.length}</span>
+                    </div>
                     ${STATUSES.map(status => {
                         const achievements = teacherAchievements.filter(a => a.status === status);
                         if (achievements.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
@@ -848,10 +878,29 @@
                         `;
                     }).join('')}
                     
+                    <div class="panel-title" style="font-size: 1rem; margin-top: 1rem;">📄 Статьи преподавателя</div>
+                    <div class="stats-grid" style="margin-bottom: 1rem;">
+                        <span>📄 Всего статей: ${teacherPersonalArticles.length}</span>
+                    </div>
+                    ${STATUSES.map(status => {
+                        const articles = teacherPersonalArticles.filter(a => a.status === status);
+                        if (articles.length === 0) return `<div style="margin: 0.5rem 0;"><strong>${status}:</strong> Нет данных</div>`;
+                        return `
+                            <div style="margin: 0.5rem 0;">
+                                <strong>${status}:</strong>
+                                ${articles.map(a => `
+                                    <div class="article-item">
+                                        <strong>${escapeHtml(a.name)}</strong> (${formatDate(a.date)})
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                    
                     <div class="cc-stats">
                         <strong>Итоговая статистика:</strong><br>
                         Всего призовых мест со студентами: ${Object.values(studentStats).reduce((a,b) => a+b, 0) - studentStats["Участие"]}<br>
-                        Всего личных достижений: ${teacherAchievements.length}<br>
+                        Всего личных достижений (конкурсы): ${teacherAchievements.length}<br>
                         Всего статей: ${teacherPersonalArticles.length}
                     </div>
                 </div>
@@ -918,12 +967,11 @@
         selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
         await loadTeacherEvents(teacher.teacher_name);
         await loadTeacherAchievements(teacher.id);
-        await loadTeacherArticles(teacher.id);
         teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === teacher.teacher_name);
         render();
     };
 
-    // Редактирование мероприятий и олимпиад
+    // Редактирование мероприятий и олимпиад (код остаётся без изменений)
     window.openEditEventModal = async function(eventId) {
         let event = null;
         for (const status of STATUSES) {
@@ -1741,7 +1789,6 @@
         selectedTeacher = { id: teacher.id, teacher_name: teacher.teacher_name };
         await loadTeacherEvents(teacher.teacher_name);
         await loadTeacherAchievements(teacher.id);
-        await loadTeacherArticles(teacher.id);
         teacherPersonalArticles = teacherArticles.filter(a => a.teacher_name === teacher.teacher_name);
         render();
     };
